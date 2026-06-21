@@ -509,30 +509,30 @@
   <div class="power-grid">
 
     <div class="card">
-      <div class="card-label">🔋 Battery</div>
+      <div class="card-label" style="color:#f59e0b;">🔋 Battery</div>
       <div class="card-value soc-green" id="soc-value">—</div>
       <div class="card-sub" id="batt-power">—</div>
       <span class="badge badge-gray" id="batt-badge">—</span>
     </div>
 
     <div class="card">
-      <div class="card-label">☀️ PV Input</div>
+      <div class="card-label" style="color:#22c55e;">☀️ PV Input</div>
       <div class="card-value" id="input-power">—</div>
     </div>
 
     <div class="card">
-      <div class="card-label">⚡ Grid</div>
+      <div class="card-label" style="color:#60a5fa;">⚡ Grid</div>
       <div class="card-value" id="grid-power">—</div>
       <span class="badge badge-gray" id="grid-badge">—</span>
     </div>
 
     <div class="card">
-      <div class="card-label">🏠 Load</div>
+      <div class="card-label" style="color:#fb923c;">🏠 Load</div>
       <div class="card-value" id="load-power">—</div>
     </div>
 
     <div class="card">
-      <div class="card-label">⛏ Miner</div>
+      <div class="card-label" style="color:#a78bfa;">⛏ Miner</div>
       <div class="card-value" id="backup-power">—</div>
     </div>
 
@@ -598,11 +598,11 @@
   <!-- Row 3: SOC + Hashrate charts -->
   <div class="charts-row">
     <div class="card chart-card">
-      <h3>SOC &amp; Power (2h)</h3>
+      <h3>SOC &amp; Power (12h)</h3>
       <div class="chart-wrap"><canvas id="socChart"></canvas></div>
     </div>
     <div class="card chart-card" id="hashrate-chart-card" style="display:none;">
-      <h3>Hashrate (2h)</h3>
+      <h3>Hashrate (12h)</h3>
       <div class="chart-wrap"><canvas id="hashrateChart"></canvas></div>
     </div>
   </div>
@@ -952,7 +952,7 @@
 
   async function loadHistory() {
     try {
-      const resp = await fetch('/api/history?hours=2');
+      const resp = await fetch('/api/history?hours=12');
       if (!resp.ok) return;
       const rows = await resp.json();
 
@@ -1089,7 +1089,7 @@
 
   async function loadHashrateHistory() {
     try {
-      const resp = await fetch('/api/history?hours=2');
+      const resp = await fetch('/api/history?hours=12');
       if (!resp.ok) return;
       const rows = await resp.json();
       const active = rows.filter(r => (r.hashrate_mhs || 0) > 0);

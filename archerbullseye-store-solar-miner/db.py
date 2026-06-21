@@ -228,7 +228,7 @@ def get_recent_readings(hours: int = 2) -> List[Dict[str, Any]]:
                    load_power_w, backup_power_w, miner_running, action, effective_soc_on,
                    hashrate_mhs
             FROM readings
-            WHERE ts >= datetime('now', ?)
+            WHERE ts >= strftime('%Y-%m-%dT%H:%M:%S', 'now', ?)
             ORDER BY ts ASC
             """,
             (f"-{hours} hours",),
