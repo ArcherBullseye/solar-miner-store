@@ -26,4 +26,6 @@ jobs:
         with:
           context: ./archerbullseye-store-solar-miner
           push: true
-          tags: ghcr.io/archerbullseye/solar-miner:latest
+          tags: |
+            ghcr.io/archerbullseye/solar-miner:latest
+            ghcr.io/archerbullseye/solar-miner:1.3.1
