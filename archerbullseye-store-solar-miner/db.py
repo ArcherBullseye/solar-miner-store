@@ -98,11 +98,23 @@ def init_db() -> None:
                 sats INTEGER NOT NULL DEFAULT 0
             )
         """)
-        # Migrate existing tables that pre-date hashrate_mhs
+        # Migrate: hashrate_mhs column
         try:
             cur.execute("ALTER TABLE readings ADD COLUMN hashrate_mhs REAL DEFAULT 0.0")
         except Exception:
             pass
+        # Migrate: daily_sats v2 — switch from MAX to delta accumulation.
+        # Clear any data recorded under the old MAX strategy so it relearns cleanly.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS _db_migrations (
+                name TEXT PRIMARY KEY
+            )
+        """)
+        if not cur.execute(
+            "SELECT 1 FROM _db_migrations WHERE name='daily_sats_delta_v2'"
+        ).fetchone():
+            cur.execute("DELETE FROM daily_sats")
+            cur.execute("INSERT INTO _db_migrations(name) VALUES('daily_sats_delta_v2')")
         for key, value in DEFAULT_SETTINGS.items():
             cur.execute(
                 "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
@@ -233,15 +245,18 @@ def reset_pv_efficiency() -> None:
         conn.close()
 
 
-def upsert_daily_sats(date_str: str, sats: int) -> None:
+def add_daily_sats_delta(date_str: str, delta: int) -> None:
+    """Add newly-earned sats (positive delta only) to the calendar-day total."""
+    if delta <= 0:
+        return
     conn = _connect()
     try:
         conn.execute(
             """
             INSERT INTO daily_sats(date, sats) VALUES(?, ?)
-            ON CONFLICT(date) DO UPDATE SET sats = MAX(sats, excluded.sats)
+            ON CONFLICT(date) DO UPDATE SET sats = sats + excluded.sats
             """,
-            (date_str, sats),
+            (date_str, delta),
         )
         conn.commit()
     finally:

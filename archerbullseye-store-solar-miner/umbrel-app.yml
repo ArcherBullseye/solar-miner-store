@@ -4,7 +4,7 @@ name: Solar Miner
 tagline: Control your Bitcoin miner with solar power
 icon: https://raw.githubusercontent.com/ArcherBullseye/solar-miner-store/main/archerbullseye-store-solar-miner/static/icon.svg
 category: bitcoin
-version: "1.2.2"
+version: "1.2.3"
 port: 3000
 description: >-
   Monitor your Solis solar inverter and automatically control your LuxOS
@@ -21,8 +21,8 @@ repo: https://github.com/ArcherBullseye/solar-miner-store
 support: https://github.com/ArcherBullseye/solar-miner-store/issues
 gallery: []
 releaseNotes: >-
-  v1.2.2: Fix Load card double-counting the miner. familyLoadPowerOrigin
-  includes the backup/EPS port, so backup power is now subtracted to show
-  main panel (house) load only.
+  v1.2.3: Fix daily earnings chart counting yesterday's sats into today.
+  Switch from rolling 24h MAX to per-poll positive delta accumulation.
+  Existing chart data is cleared on upgrade and relearns correctly.
 submitter: ArcherBullseye
 submission: https://github.com/ArcherBullseye/solar-miner-store

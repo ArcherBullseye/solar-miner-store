@@ -13,7 +13,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module="urllib3")
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
 
-from db import init_db, get_settings, update_settings, save_reading, get_recent_readings, update_pv_efficiency, get_pv_efficiency, upsert_daily_sats, get_daily_sats, reset_pv_efficiency
+from db import init_db, get_settings, update_settings, save_reading, get_recent_readings, update_pv_efficiency, get_pv_efficiency, add_daily_sats_delta, get_daily_sats, reset_pv_efficiency
 from solis_api import SolisClient, SolisApiError, parse_power_and_soc
 from luxos_api import LuxOsClient, LuxOsError
 from weather import get_weather, parse_weather, geocode as do_geocode
@@ -606,6 +606,12 @@ def _fetch_btc_price() -> Optional[float]:
 
 
 def pool_loop() -> None:
+    # Luxor only exposes a rolling 24h revenue window, not per-calendar-day data.
+    # We track positive deltas between polls to accumulate true daily earnings.
+    # On startup we skip the first reading to avoid crediting the entire 24h
+    # backlog as today's earnings.
+    prev_sats = None  # type: Optional[int]
+
     while True:
         try:
             # Fetch BTC price
@@ -627,9 +633,12 @@ def pool_loop() -> None:
                         state["pool"] = summary
                         state["pool_last_updated"] = now_str
                     sats = summary.get("sats_today", 0) or 0
-                    if sats > 0:
-                        today = datetime.now().strftime("%Y-%m-%d")
-                        upsert_daily_sats(today, sats)
+                    if prev_sats is not None:
+                        delta = sats - prev_sats
+                        if delta > 0:
+                            today = datetime.now().strftime("%Y-%m-%d")
+                            add_daily_sats_delta(today, delta)
+                    prev_sats = sats
         except Exception as e:
             print(f"Pool loop error: {e}")
         time.sleep(300)  # refresh every 5 minutes
