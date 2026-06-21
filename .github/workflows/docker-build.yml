@@ -24,7 +24,7 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
-          context: ./solar-miner
+          context: ./archerbullseye-store-solar-miner
           push: true
           tags: |
             ghcr.io/archerbullseye/solar-miner:latest
