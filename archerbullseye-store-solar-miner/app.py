@@ -353,13 +353,13 @@ def control_loop() -> None:
                             continue
                         eff = efficiency_map.get(hour_of_day)
                         if eff is not None:
-                            # We have learned data — use it
-                            expected_w = rad * pv_peak_kw * 1000.0 * eff
+                            # We have learned data — use predicted output vs miner draw
+                            if rad * pv_peak_kw * 1000.0 * eff >= miner_power_w:
+                                profitable_hours += 1
                         else:
-                            # No data yet — fall back to raw radiation threshold
-                            expected_w = rad if rad > float(settings.get("radiation_threshold_wm2") or 300.0) else 0
-                        if expected_w >= miner_power_w:
-                            profitable_hours += 1
+                            # No learned data yet — count hours above radiation threshold
+                            if rad > float(settings.get("radiation_threshold_wm2") or 300.0):
+                                profitable_hours += 1
                     if profitable_hours >= sunny_hours_threshold:
                         smart_active = True
                 else:
@@ -643,6 +643,8 @@ def api_status():
     with state_lock:
         snapshot = dict(state)
     snapshot["pv_efficiency"] = get_pv_efficiency()
+    settings = get_settings()
+    snapshot["pv_peak_kw"] = float(settings.get("pv_peak_kw") or 0.0)
     return jsonify(snapshot)
 
 

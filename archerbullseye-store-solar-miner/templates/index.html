@@ -212,7 +212,16 @@
       flex-direction: column;
       min-height: 0;
     }
-    .chart-card h3 { font-size: clamp(10px, .8vw, 12px); margin-bottom: .7em; color: var(--muted); font-weight: 600; flex-shrink: 0; }
+    .chart-card h3 { font-size: clamp(10px, .8vw, 12px); color: var(--muted); font-weight: 600; flex-shrink: 0; }
+    .chart-header { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; margin-bottom: .7em; }
+    .time-btns { display: flex; gap: 3px; }
+    .time-btn {
+      background: none; border: 1px solid var(--border); color: var(--muted);
+      border-radius: 4px; padding: 1px 7px; font-size: 10px; cursor: pointer;
+      transition: background .15s, color .15s, border-color .15s;
+    }
+    .time-btn:hover { border-color: var(--muted); color: var(--text); }
+    .time-btn.active { background: var(--amber); border-color: var(--amber); color: #000; font-weight: 600; }
     .chart-wrap { position: relative; flex: 1; min-height: 180px; }
 
     /* ── Error banner ── */
@@ -598,11 +607,19 @@
   <!-- Row 3: SOC + Hashrate charts -->
   <div class="charts-row">
     <div class="card chart-card">
-      <h3>SOC &amp; Power (12h)</h3>
+      <div class="chart-header">
+        <h3 id="soc-chart-title">SOC &amp; Power (12h)</h3>
+        <div class="time-btns">
+          <button class="time-btn" data-hours="2">2h</button>
+          <button class="time-btn active" data-hours="12">12h</button>
+          <button class="time-btn" data-hours="24">24h</button>
+          <button class="time-btn" data-hours="168">7d</button>
+        </div>
+      </div>
       <div class="chart-wrap"><canvas id="socChart"></canvas></div>
     </div>
     <div class="card chart-card" id="hashrate-chart-card" style="display:none;">
-      <h3>Hashrate (12h)</h3>
+      <h3 id="hr-chart-title">Hashrate (12h)</h3>
       <div class="chart-wrap"><canvas id="hashrateChart"></canvas></div>
     </div>
   </div>
@@ -949,15 +966,37 @@
   // ── SOC + Power Chart ────────────────────────────────────────
   let socChart = null;
   let hashrateChart = null;
+  let historyHours = 12;
+
+  function setHistoryWindow(hours) {
+    historyHours = hours;
+    document.querySelectorAll('.time-btn').forEach(b =>
+      b.classList.toggle('active', Number(b.dataset.hours) === hours)
+    );
+    const label = hours === 168 ? '7d' : hours + 'h';
+    el('soc-chart-title').textContent = `SOC & Power (${label})`;
+    const hrTitle = el('hr-chart-title');
+    if (hrTitle) hrTitle.textContent = `Hashrate (${label})`;
+    if (socChart) { socChart.destroy(); socChart = null; }
+    if (hashrateChart) { hashrateChart.destroy(); hashrateChart = null; }
+    loadHistory();
+    loadHashrateHistory();
+  }
+
+  document.querySelectorAll('.time-btn').forEach(b =>
+    b.addEventListener('click', () => setHistoryWindow(Number(b.dataset.hours)))
+  );
 
   async function loadHistory() {
     try {
-      const resp = await fetch('/api/history?hours=12');
+      const resp = await fetch(`/api/history?hours=${historyHours}`);
       if (!resp.ok) return;
       const rows = await resp.json();
 
       const labels    = rows.map(r => {
         const d = new Date(r.ts);
+        if (historyHours > 24)
+          return d.toLocaleDateString([], {weekday:'short'}) + ' ' + d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
         return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
       });
       const socVals   = rows.map(r => r.soc);
@@ -1089,7 +1128,7 @@
 
   async function loadHashrateHistory() {
     try {
-      const resp = await fetch('/api/history?hours=12');
+      const resp = await fetch(`/api/history?hours=${historyHours}`);
       if (!resp.ok) return;
       const rows = await resp.json();
       const active = rows.filter(r => (r.hashrate_mhs || 0) > 0);
@@ -1103,6 +1142,8 @@
       document.querySelector('.charts-row').style.gridTemplateColumns = '1fr 1fr';
       const labels = active.map(r => {
         const d = new Date(r.ts);
+        if (historyHours > 24)
+          return d.toLocaleDateString([], {weekday:'short'}) + ' ' + d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
         return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
       });
       const vals = active.map(r => r.hashrate_mhs / 1e6);  // convert to TH/s
@@ -1235,7 +1276,13 @@
         el('wx-icon').textContent      = wx.current_icon || '—';
         el('wx-desc').textContent      = wx.current_desc || '—';
         el('wx-temp').textContent      = wx.current_temp_f != null ? wx.current_temp_f.toFixed(1) + '°F' : '—';
-        el('wx-radiation').textContent = wx.current_radiation_w != null ? wx.current_radiation_w + ' W/m²' : '—';
+        const pvKw = s.pv_peak_kw || 0;
+        function estSolar(rad_w) {
+          if (!pvKw) return `<span style="color:var(--red)">—</span>`;
+          return (pvKw * rad_w / 1000).toFixed(1) + ' kW';
+        }
+        const curEst = wx.current_radiation_w != null ? estSolar(wx.current_radiation_w) : '—';
+        el('wx-radiation').innerHTML = curEst;
 
         // Hourly forecast
         const row = el('hourly-row');
@@ -1245,7 +1292,7 @@
               <div class="time">${h.time}</div>
               <div class="emoji">${h.icon}</div>
               <div class="temp">${h.temp_f.toFixed(0)}°F</div>
-              <div class="rad">${h.radiation_w} W/m²</div>
+              <div class="rad">${estSolar(h.radiation_w)}</div>
             </div>`
           ).join('');
         }
