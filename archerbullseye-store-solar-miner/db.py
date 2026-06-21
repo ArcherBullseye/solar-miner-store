@@ -49,6 +49,8 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "tg_sats_milestone": True,
     "tg_sats_milestone_amount": 1000,
     "tg_sunny_day_ahead": True,
+    # End-of-day battery target
+    "eod_soc_target": 0.0,  # 0 = disabled
 }
 
 
@@ -232,6 +234,27 @@ def get_pv_efficiency() -> Dict[int, float]:
             for row in cur.fetchall()
             if row["sample_count"] >= 3  # need at least 3 samples to trust
         }
+    finally:
+        conn.close()
+
+
+def get_hourly_load_profile(days: int = 7) -> Dict[int, float]:
+    """Returns {hour_of_day: avg_load_w} from the last N days of readings."""
+    conn = _connect()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT CAST(strftime('%H', ts) AS INTEGER) AS hour,
+                   AVG(load_power_w) AS avg_w
+            FROM readings
+            WHERE ts >= strftime('%Y-%m-%dT%H:%M:%S', 'now', ?)
+              AND load_power_w > 0
+            GROUP BY hour
+            """,
+            (f"-{days} days",),
+        )
+        return {int(row["hour"]): float(row["avg_w"]) for row in cur.fetchall()}
     finally:
         conn.close()
 

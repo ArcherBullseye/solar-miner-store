@@ -13,7 +13,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module="urllib3")
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
 
-from db import init_db, get_settings, update_settings, save_reading, get_recent_readings, update_pv_efficiency, get_pv_efficiency, add_daily_sats_delta, get_daily_sats, reset_pv_efficiency
+from db import init_db, get_settings, update_settings, save_reading, get_recent_readings, update_pv_efficiency, get_pv_efficiency, add_daily_sats_delta, get_daily_sats, reset_pv_efficiency, get_hourly_load_profile
 from solis_api import SolisClient, SolisApiError, parse_power_and_soc
 from luxos_api import LuxOsClient, LuxOsError
 from weather import get_weather, parse_weather, geocode as do_geocode
@@ -38,6 +38,10 @@ state = {
     "cycle": 0,
     "error": None,
     "action": "none",
+    "eod_target": None,
+    "eod_projected_with": None,
+    "eod_projected_without": None,
+    "eod_protecting": False,
 }
 state_lock = threading.Lock()
 
@@ -305,6 +309,65 @@ def _send_notifications(settings: dict, soc: Optional[float], actually_mining: b
 
 # ── Control loop ─────────────────────────────────────────────────
 
+def _estimate_eod_soc(
+    soc: float,
+    battery_kwh: float,
+    hourly_wx: list,
+    pv_peak_kw: float,
+    eff_map: dict,
+    load_profile: dict,
+    miner_power_w: float,
+    include_miner: bool,
+) -> Optional[float]:
+    """
+    Project battery SOC (%) at end of today's solar generation window.
+    Iterates remaining hourly forecast slots until radiation drops below 50 W/m²,
+    accumulating net energy (PV - house load - miner if include_miner).
+    Returns None if insufficient data to estimate.
+    """
+    if battery_kwh <= 0 or not hourly_wx:
+        return None
+
+    now_hour = datetime.now().hour
+    energy_kwh = (soc / 100.0) * battery_kwh
+    found_solar = False
+
+    for slot in hourly_wx:
+        try:
+            slot_hour = int(str(slot.get("time", "")).split(":")[0])
+        except (ValueError, IndexError):
+            continue
+        if slot_hour < now_hour:
+            continue
+
+        rad = float(slot.get("radiation_w") or 0)
+        if rad < 50:
+            if found_solar:
+                break  # past end of solar window
+            continue   # pre-dawn hours before generation starts
+
+        found_solar = True
+
+        # PV production this hour
+        theoretical = pv_peak_kw * rad / 1000.0
+        eff = eff_map.get(slot_hour)
+        pv = theoretical * eff if (eff and eff > 0.05) else theoretical
+
+        # House load this hour (fall back to 400 W if no history yet)
+        load_w = load_profile.get(slot_hour, 400.0)
+
+        # Miner draw
+        miner = (miner_power_w / 1000.0) if include_miner else 0.0
+
+        energy_kwh += pv - (load_w / 1000.0) - miner
+        energy_kwh = max(0.0, min(battery_kwh, energy_kwh))
+
+    if not found_solar:
+        return None
+
+    return round((energy_kwh / battery_kwh) * 100.0, 1)
+
+
 def control_loop() -> None:
     while True:
         loop_start = time.monotonic()
@@ -473,6 +536,40 @@ def control_loop() -> None:
                         desired_mining = soc >= effective_soc_off
                     else:
                         desired_mining = soc >= effective_soc_on
+
+                    # EOD target override: project SOC at end of solar day and stop
+                    # the miner early if running would cause us to miss the target.
+                    eod_target = float(settings.get("eod_soc_target") or 0.0)
+                    battery_kwh = float(settings.get("battery_capacity_kwh") or 0.0)
+                    eod_projected_with    = None
+                    eod_projected_without = None
+                    eod_protecting        = False
+                    if eod_target > 0.0 and battery_kwh > 0.0 and pv_peak_kw > 0.0:
+                        hourly_wx   = (current_weather or {}).get("hourly", [])
+                        load_profile = get_hourly_load_profile()
+                        eff_map      = get_pv_efficiency()
+                        eod_projected_with = _estimate_eod_soc(
+                            soc=soc, battery_kwh=battery_kwh,
+                            hourly_wx=hourly_wx, pv_peak_kw=pv_peak_kw,
+                            eff_map=eff_map, load_profile=load_profile,
+                            miner_power_w=miner_power_w, include_miner=True,
+                        )
+                        eod_projected_without = _estimate_eod_soc(
+                            soc=soc, battery_kwh=battery_kwh,
+                            hourly_wx=hourly_wx, pv_peak_kw=pv_peak_kw,
+                            eff_map=eff_map, load_profile=load_profile,
+                            miner_power_w=miner_power_w, include_miner=False,
+                        )
+                        if desired_mining and eod_projected_with is not None \
+                                and eod_projected_with < eod_target:
+                            desired_mining = False
+                            eod_protecting = True
+
+                    with state_lock:
+                        state["eod_target"]            = eod_target if eod_target > 0 else None
+                        state["eod_projected_with"]    = eod_projected_with
+                        state["eod_projected_without"] = eod_projected_without
+                        state["eod_protecting"]        = eod_protecting
 
                     if actually_mining != desired_mining:
                         if desired_mining:
@@ -658,6 +755,7 @@ def api_status():
     snapshot["pv_efficiency"] = get_pv_efficiency()
     settings = get_settings()
     snapshot["pv_peak_kw"] = float(settings.get("pv_peak_kw") or 0.0)
+    snapshot["eod_soc_target"] = float(settings.get("eod_soc_target") or 0.0)
     return jsonify(snapshot)
 
 
@@ -703,6 +801,7 @@ def api_post_settings():
         "sunny_hours_threshold", "radiation_threshold_wm2",
         "location_lat", "location_lon",
         "battery_capacity_kwh", "pv_peak_kw", "miner_power_w",
+        "eod_soc_target",
         "api_fail_cycles",
         "tg_soc_low_pct", "tg_hashrate_drop_pct", "tg_daily_hour",
         "tg_sats_milestone_amount",

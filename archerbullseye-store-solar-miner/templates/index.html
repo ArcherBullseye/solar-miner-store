@@ -560,6 +560,7 @@
       <span class="badge badge-gray" id="smart-badge">INACTIVE</span>
       <div class="card-sub" style="margin-top:8px;" id="smart-sunny">—</div>
       <div class="card-sub" id="smart-threshold">SOC ON: —</div>
+      <div class="card-sub" id="eod-projection" style="display:none;margin-top:4px;font-size:11px;"></div>
     </div>
 
   </div>
@@ -568,7 +569,7 @@
   <div class="info-row">
 
     <div class="card sats-card">
-      <div class="card-label">⛏ Today's Sats</div>
+      <div class="card-label">⛏ Sats (24h)</div>
       <div class="card-value" id="pool-sats-today" style="font-size:20px;">—</div>
       <div class="card-sub" id="pool-today-usd" style="color:var(--green);margin-bottom:4px;">—</div>
       <div class="card-sub" id="pool-hashrate" style="font-size:11px;"></div>
@@ -789,6 +790,11 @@
               <input type="number" id="s-radiation_threshold_wm2" step="10" min="0" />
               <div class="form-hint">Counts as a "sunny hour" above this level.</div>
             </div>
+          </div>
+          <div class="form-group" style="margin-top:.5em;">
+            <label>End-of-Day Battery Target (%)</label>
+            <input type="number" id="s-eod_soc_target" step="1" min="0" max="100" placeholder="0 = disabled" />
+            <div class="form-hint">Smart Start will shut the miner off early if keeping it running would cause the battery to end the solar day below this SOC. Set to 0 to disable.</div>
           </div>
         </div>
 
@@ -1022,7 +1028,7 @@
                 borderColor: '#f59e0b',
                 backgroundColor: 'rgba(245,158,11,0.08)',
                 borderWidth: 2,
-                pointRadius: 3,
+                pointRadius: 1,
                 pointBackgroundColor: bgColors,
                 pointBorderColor: bgColors,
                 tension: 0.3,
@@ -1272,6 +1278,21 @@
       el('smart-sunny').textContent = 'Sunny hours remaining: ' + (sunny != null ? sunny : '—');
       el('smart-threshold').textContent = 'Effective SOC ON: ' + (s.effective_soc_on != null ? s.effective_soc_on.toFixed(1) + '%' : '—');
 
+      const eodEl = el('eod-projection');
+      const eodTarget = s.eod_soc_target || 0;
+      const eodWith    = s.eod_projected_with;
+      const eodWithout = s.eod_projected_without;
+      if (eodTarget > 0 && eodWith != null) {
+        const color = s.eod_protecting ? 'var(--amber)' : (eodWith >= eodTarget ? 'var(--green)' : 'var(--red)');
+        const label = s.eod_protecting ? '⚠ EOD protect active' : 'EOD est';
+        eodEl.style.display = '';
+        eodEl.style.color = color;
+        eodEl.innerHTML = `${label}: <b>${eodWith.toFixed(0)}%</b> w/ miner`;
+        if (eodWithout != null) eodEl.innerHTML += ` &nbsp;/&nbsp; <b>${eodWithout.toFixed(0)}%</b> w/o`;
+      } else {
+        eodEl.style.display = 'none';
+      }
+
       // Weather
       if (wx) {
         el('wx-icon').textContent      = wx.current_icon || '—';
@@ -1380,6 +1401,7 @@
         'sunny_hours_threshold','radiation_threshold_wm2',
         'location_lat','location_lon',
         'battery_capacity_kwh','pv_peak_kw','miner_power_w',
+        'eod_soc_target',
         'api_fail_cycles',
         'tg_soc_low_pct','tg_hashrate_drop_pct','tg_daily_hour','tg_sats_milestone_amount',
       ];
@@ -1436,6 +1458,7 @@
       smart_soc_off_threshold: Number(el('s-smart_soc_off_threshold').value),
       sunny_hours_threshold:   Number(el('s-sunny_hours_threshold').value),
       radiation_threshold_wm2: Number(el('s-radiation_threshold_wm2').value),
+      eod_soc_target:          Number(el('s-eod_soc_target').value) || 0,
       location_name:           el('s-location_name').value,
       location_lat:            Number(el('s-location_lat').value),
       location_lon:            Number(el('s-location_lon').value),
