@@ -224,6 +224,15 @@ def get_pv_efficiency() -> Dict[int, float]:
         conn.close()
 
 
+def reset_pv_efficiency() -> None:
+    conn = _connect()
+    try:
+        conn.execute("DELETE FROM pv_efficiency")
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def upsert_daily_sats(date_str: str, sats: int) -> None:
     conn = _connect()
     try:

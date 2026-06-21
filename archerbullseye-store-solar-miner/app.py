@@ -13,7 +13,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module="urllib3")
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
 
-from db import init_db, get_settings, update_settings, save_reading, get_recent_readings, update_pv_efficiency, get_pv_efficiency, upsert_daily_sats, get_daily_sats
+from db import init_db, get_settings, update_settings, save_reading, get_recent_readings, update_pv_efficiency, get_pv_efficiency, upsert_daily_sats, get_daily_sats, reset_pv_efficiency
 from solis_api import SolisClient, SolisApiError, parse_power_and_soc
 from luxos_api import LuxOsClient, LuxOsError
 from weather import get_weather, parse_weather, geocode as do_geocode
@@ -663,6 +663,12 @@ def api_history():
 def api_daily_sats():
     days = int(request.args.get("days", 7))
     return jsonify(get_daily_sats(days))
+
+
+@app.route("/api/reset_efficiency", methods=["POST"])
+def api_reset_efficiency():
+    reset_pv_efficiency()
+    return jsonify({"ok": True})
 
 
 @app.route("/api/settings", methods=["GET"])

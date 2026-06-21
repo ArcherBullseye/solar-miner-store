@@ -713,6 +713,11 @@
             <input type="number" id="s-pv_peak_kw" step="0.1" min="0" placeholder="e.g. 6.5" />
             <div class="form-hint">Maximum output of your solar panels at full sun. Used to calculate solar efficiency % and project available power.</div>
           </div>
+          <div class="form-group">
+            <label>Learned Efficiency Data</label>
+            <button type="button" id="btn-reset-eff" class="btn-secondary" style="padding:.35em .9em;font-size:.8em;">Reset</button>
+            <div class="form-hint">Clear per-hour efficiency data so it relearns from scratch. Do this after correcting PV Peak Power.</div>
+          </div>
         </div>
 
         <!-- Control -->
@@ -1231,7 +1236,7 @@
         el('grid-power').textContent = fmt(Math.abs(gw));
         const gridBadge = el('grid-badge');
         gridBadge.textContent = gridDir;
-        gridBadge.className = 'badge ' + (gridDir === 'exporting' ? 'badge-green' : gridDir === 'importing' ? 'badge-amber' : 'badge-gray');
+        gridBadge.className = 'badge ' + (gridDir === 'exporting' ? 'badge-red' : gridDir === 'importing' ? 'badge-amber' : 'badge-gray');
 
         // Load & Backup
         el('load-power').textContent = fmt(r.load_power_w);
@@ -1277,7 +1282,7 @@
         function estSolar(rad_w, hour) {
           if (!pvKw) return `<span style="color:var(--red)">—</span>`;
           const theoretical = pvKw * rad_w / 1000;
-          const eff = (hour != null && effMap[hour] != null) ? effMap[hour] : null;
+          const eff = (hour != null && effMap[hour] != null && effMap[hour] > 0.05) ? effMap[hour] : null;
           const kw = eff !== null ? theoretical * eff : theoretical;
           const learned = eff !== null;
           return kw.toFixed(1) + ' kW' + (learned ? '' : '*');
@@ -1409,6 +1414,13 @@
       console.warn('loadSettings error:', e);
     }
   }
+
+  el('btn-reset-eff').onclick = async () => {
+    if (!confirm('Clear all learned efficiency data? It will relearn over the next few days.')) return;
+    const r = await fetch('/api/reset_efficiency', {method: 'POST'});
+    if (r.ok) { alert('Efficiency data cleared.'); }
+    else { alert('Failed to reset — check logs.'); }
+  };
 
   async function saveSettings() {
     const payload = {
