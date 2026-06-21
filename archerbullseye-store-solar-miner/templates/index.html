@@ -556,7 +556,8 @@
     </div>
 
     <div class="card">
-      <div class="card-label" style="display:flex;align-items:center;gap:6px;">🧠 Smart Start <span class="badge badge-gray" id="smart-badge">Smart</span></div>
+      <div class="card-label">🧠 Smart</div>
+      <span class="badge badge-gray" id="smart-badge">Idle</span>
       <div class="card-sub" style="margin-top:8px;" id="smart-sunny">—</div>
       <div class="card-sub" id="smart-threshold">SOC ON: —</div>
       <div class="card-sub" id="eod-projection" style="display:none;margin-top:4px;font-size:11px;"></div>
@@ -1038,6 +1039,7 @@
                 pointBackgroundColor: bgColors,
                 pointBorderColor: bgColors,
                 tension: 0.4,
+                cubicInterpolationMode: 'monotone',
                 fill: true,
                 yAxisID: 'y',
               },
@@ -1049,6 +1051,7 @@
                 borderWidth: 1.5,
                 pointRadius: 0,
                 tension: 0.4,
+                cubicInterpolationMode: 'monotone',
                 yAxisID: 'y1',
               },
               {
@@ -1059,6 +1062,7 @@
                 borderWidth: 1.5,
                 pointRadius: 0,
                 tension: 0.4,
+                cubicInterpolationMode: 'monotone',
                 yAxisID: 'y1',
               },
               {
@@ -1069,6 +1073,7 @@
                 borderWidth: 1.5,
                 pointRadius: 0,
                 tension: 0.4,
+                cubicInterpolationMode: 'monotone',
                 yAxisID: 'y1',
               },
               {
@@ -1079,6 +1084,7 @@
                 borderWidth: 1.5,
                 pointRadius: 0,
                 tension: 0.4,
+                cubicInterpolationMode: 'monotone',
                 yAxisID: 'y1',
               },
             ]
@@ -1272,7 +1278,7 @@
 
       // Smart start
       const smartBadge = el('smart-badge');
-      smartBadge.textContent = 'Smart';
+      smartBadge.textContent = s.smart_start_active ? 'Active' : 'Idle';
       smartBadge.className = 'badge ' + (s.smart_start_active ? 'badge-green' : 'badge-gray');
       const wx = s.weather;
       const sunny = wx ? wx.remaining_sunny_hours : null;
