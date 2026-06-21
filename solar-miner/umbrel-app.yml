@@ -1,6 +1,5 @@
 manifestVersion: 1.1
 id: solar-miner
-disabled: false
 name: Solar Miner
 tagline: Control your Bitcoin miner with solar power
 icon: https://raw.githubusercontent.com/ArcherBullseye/solar-miner-store/main/solar-miner/static/icon.svg
@@ -12,20 +11,16 @@ description: >-
   Bitcoin miner based on battery state of charge.
 
 
-  Features a smart start mode that reads the weather forecast — on sunny
-  days with 3+ hours of strong irradiance, the miner starts early (before
-  the battery hits 80%) to make the most of excess PV generation.
-
-
-  Live dashboard shows SOC, battery power, PV input, grid, load, and
-  backup power. Fully configurable thresholds via the built-in web UI.
-developer: ""
-website: ""
-submitter: ""
-submission: ""
+  Features smart start mode using learned per-hour PV efficiency, weather
+  forecasting, Telegram alerts, Luxor pool stats, and live BTC price.
+  Fully configurable via the built-in web UI — no config files needed.
+developer: ArcherBullseye
+website: https://github.com/ArcherBullseye/solar-miner-store
 dependencies: []
-repo: ""
-support: ""
+repo: https://github.com/ArcherBullseye/solar-miner-store
+support: https://github.com/ArcherBullseye/solar-miner-store/issues
 gallery: []
 releaseNotes: >-
   Initial release.
+submitter: ArcherBullseye
+submission: https://github.com/ArcherBullseye/solar-miner-store
