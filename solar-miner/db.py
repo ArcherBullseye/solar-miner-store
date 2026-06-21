@@ -1,0 +1,239 @@
+import json
+import sqlite3
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List
+
+DB_PATH = Path("data/controller.db")
+
+DEFAULT_SETTINGS: Dict[str, Any] = {
+    "solis_api_key": "",
+    "solis_api_secret": "",
+    "solis_inverter_sn": "",
+    "solis_base_url": "https://www.soliscloud.com:13333",
+    "miner_ip": "",
+    "poll_interval_seconds": 60,
+    "soc_on_threshold": 85.0,
+    "soc_off_threshold": 80.0,
+    "smart_start_enabled": True,
+    "smart_soc_on_threshold": 60.0,
+    "smart_soc_off_threshold": 55.0,
+    "sunny_hours_threshold": 3.0,
+    "radiation_threshold_wm2": 300.0,
+    "location_lat": 0.0,
+    "location_lon": 0.0,
+    "location_name": "",
+    "battery_capacity_kwh": 0.0,
+    "pv_peak_kw": 0.0,
+    "miner_power_w": 0.0,
+    # API failsafe
+    "api_fail_action": "stop",
+    "api_fail_cycles": 3,
+    # Lux Pool
+    "lux_pool_api_key": "",
+    "lux_pool_username": "",
+    "lux_pool_api_url": "",  # leave blank to auto-detect
+    # Telegram
+    "telegram_bot_token": "",
+    "telegram_chat_id": "",
+    "tg_miner_onoff": True,
+    "tg_smart_start": True,
+    "tg_api_failure": True,
+    "tg_soc_low": True,
+    "tg_soc_low_pct": 20.0,
+    "tg_soc_full": True,
+    "tg_hashrate_drop": True,
+    "tg_hashrate_drop_pct": 25.0,
+    "tg_daily_summary": True,
+    "tg_daily_hour": 7,
+    "tg_sats_milestone": True,
+    "tg_sats_milestone_amount": 1000,
+    "tg_sunny_day_ahead": True,
+}
+
+
+def _connect() -> sqlite3.Connection:
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def init_db() -> None:
+    conn = _connect()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS settings (
+                key   TEXT PRIMARY KEY,
+                value TEXT
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS pv_efficiency (
+                hour_of_day   INTEGER PRIMARY KEY,
+                avg_ratio     REAL DEFAULT 0.0,
+                sample_count  INTEGER DEFAULT 0
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS readings (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts              TEXT,
+                soc             REAL,
+                battery_power_w REAL,
+                input_power_w   REAL,
+                grid_power_w    REAL,
+                load_power_w    REAL,
+                backup_power_w  REAL,
+                miner_running   INTEGER,
+                action          TEXT,
+                effective_soc_on REAL,
+                hashrate_mhs    REAL DEFAULT 0.0
+            )
+        """)
+        # Migrate existing tables that pre-date hashrate_mhs
+        try:
+            cur.execute("ALTER TABLE readings ADD COLUMN hashrate_mhs REAL DEFAULT 0.0")
+        except Exception:
+            pass
+        for key, value in DEFAULT_SETTINGS.items():
+            cur.execute(
+                "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
+                (key, json.dumps(value)),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_settings() -> Dict[str, Any]:
+    conn = _connect()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT key, value FROM settings")
+        rows = cur.fetchall()
+    finally:
+        conn.close()
+
+    result = dict(DEFAULT_SETTINGS)
+    for row in rows:
+        key = row["key"]
+        if key in DEFAULT_SETTINGS:
+            try:
+                result[key] = json.loads(row["value"])
+            except (json.JSONDecodeError, TypeError):
+                result[key] = row["value"]
+    return result
+
+
+def update_settings(updates: Dict[str, Any]) -> None:
+    conn = _connect()
+    try:
+        cur = conn.cursor()
+        for key, value in updates.items():
+            if key in DEFAULT_SETTINGS:
+                cur.execute(
+                    "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                    (key, json.dumps(value)),
+                )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def save_reading(r: Dict[str, Any]) -> None:
+    conn = _connect()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO readings
+                (ts, soc, battery_power_w, input_power_w, grid_power_w,
+                 load_power_w, backup_power_w, miner_running, action, effective_soc_on,
+                 hashrate_mhs)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                r.get("ts", datetime.utcnow().isoformat()),
+                r.get("soc"),
+                r.get("battery_power_w"),
+                r.get("input_power_w"),
+                r.get("grid_power_w"),
+                r.get("load_power_w"),
+                r.get("backup_power_w"),
+                1 if r.get("miner_running") else 0,
+                r.get("action", "none"),
+                r.get("effective_soc_on"),
+                r.get("hashrate_mhs", 0.0),
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def update_pv_efficiency(hour_of_day: int, actual_w: float, radiation_wm2: float, pv_peak_kw: float) -> None:
+    """Update the rolling per-hour efficiency ratio (actual / theoretical max)."""
+    if pv_peak_kw <= 0 or radiation_wm2 <= 0:
+        return
+    theoretical = radiation_wm2 * pv_peak_kw * 1000.0
+    ratio = max(0.0, min(1.5, actual_w / theoretical))  # cap at 150% for bad data
+    conn = _connect()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT avg_ratio, sample_count FROM pv_efficiency WHERE hour_of_day = ?", (hour_of_day,))
+        row = cur.fetchone()
+        if row:
+            # Exponential moving average — weight recent data more (alpha=0.15)
+            alpha = 0.15
+            new_avg = alpha * ratio + (1 - alpha) * row["avg_ratio"]
+            new_count = row["sample_count"] + 1
+            cur.execute(
+                "UPDATE pv_efficiency SET avg_ratio = ?, sample_count = ? WHERE hour_of_day = ?",
+                (new_avg, new_count, hour_of_day),
+            )
+        else:
+            cur.execute(
+                "INSERT INTO pv_efficiency (hour_of_day, avg_ratio, sample_count) VALUES (?, ?, 1)",
+                (hour_of_day, ratio),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_pv_efficiency() -> Dict[int, float]:
+    """Returns {hour: avg_ratio} for all hours that have data."""
+    conn = _connect()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT hour_of_day, avg_ratio, sample_count FROM pv_efficiency")
+        return {
+            row["hour_of_day"]: row["avg_ratio"]
+            for row in cur.fetchall()
+            if row["sample_count"] >= 3  # need at least 3 samples to trust
+        }
+    finally:
+        conn.close()
+
+
+def get_recent_readings(hours: int = 2) -> List[Dict[str, Any]]:
+    conn = _connect()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT id, ts, soc, battery_power_w, input_power_w, grid_power_w,
+                   load_power_w, backup_power_w, miner_running, action, effective_soc_on,
+                   hashrate_mhs
+            FROM readings
+            WHERE ts >= datetime('now', ?)
+            ORDER BY ts ASC
+            """,
+            (f"-{hours} hours",),
+        )
+        rows = cur.fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
