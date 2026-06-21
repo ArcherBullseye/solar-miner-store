@@ -598,7 +598,7 @@
   <!-- Row 3: SOC + Hashrate charts -->
   <div class="charts-row">
     <div class="card chart-card">
-      <h3>SOC History (2h)</h3>
+      <h3>SOC &amp; Power (2h)</h3>
       <div class="chart-wrap"><canvas id="socChart"></canvas></div>
     </div>
     <div class="card chart-card" id="hashrate-chart-card" style="display:none;">
@@ -946,7 +946,7 @@
     return Math.round(mhs) + ' MH/s';
   }
 
-  // ── SOC Chart ────────────────────────────────────────────────
+  // ── SOC + Power Chart ────────────────────────────────────────
   let socChart = null;
   let hashrateChart = null;
 
@@ -956,12 +956,16 @@
       if (!resp.ok) return;
       const rows = await resp.json();
 
-      const labels   = rows.map(r => {
+      const labels    = rows.map(r => {
         const d = new Date(r.ts);
         return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
       });
-      const socVals  = rows.map(r => r.soc);
-      const bgColors = rows.map(r => r.miner_running ? 'rgba(34,197,94,0.7)' : 'rgba(59,130,246,0.6)');
+      const socVals   = rows.map(r => r.soc);
+      const pvVals    = rows.map(r => (r.input_power_w  || 0) / 1000);
+      const gridVals  = rows.map(r => (r.grid_power_w   || 0) / 1000);
+      const loadVals  = rows.map(r => (r.load_power_w   || 0) / 1000);
+      const minerVals = rows.map(r => (r.backup_power_w || 0) / 1000);
+      const bgColors  = rows.map(r => r.miner_running ? 'rgba(34,197,94,0.7)' : 'rgba(245,158,11,0.6)');
 
       if (!socChart) {
         const ctx = el('socChart').getContext('2d');
@@ -969,41 +973,98 @@
           type: 'line',
           data: {
             labels,
-            datasets: [{
-              label: 'SOC %',
-              data: socVals,
-              borderColor: '#f59e0b',
-              backgroundColor: 'rgba(245,158,11,0.08)',
-              borderWidth: 2,
-              pointRadius: 4,
-              pointBackgroundColor: bgColors,
-              pointBorderColor: bgColors,
-              tension: 0.3,
-              fill: true,
-            }]
+            datasets: [
+              {
+                label: 'SOC %',
+                data: socVals,
+                borderColor: '#f59e0b',
+                backgroundColor: 'rgba(245,158,11,0.08)',
+                borderWidth: 2,
+                pointRadius: 3,
+                pointBackgroundColor: bgColors,
+                pointBorderColor: bgColors,
+                tension: 0.3,
+                fill: true,
+                yAxisID: 'y',
+              },
+              {
+                label: 'PV kW',
+                data: pvVals,
+                borderColor: '#22c55e',
+                backgroundColor: 'transparent',
+                borderWidth: 1.5,
+                pointRadius: 0,
+                tension: 0.3,
+                yAxisID: 'y1',
+              },
+              {
+                label: 'Grid kW',
+                data: gridVals,
+                borderColor: '#60a5fa',
+                backgroundColor: 'transparent',
+                borderWidth: 1.5,
+                pointRadius: 0,
+                tension: 0.3,
+                yAxisID: 'y1',
+              },
+              {
+                label: 'Load kW',
+                data: loadVals,
+                borderColor: '#fb923c',
+                backgroundColor: 'transparent',
+                borderWidth: 1.5,
+                pointRadius: 0,
+                tension: 0.3,
+                yAxisID: 'y1',
+              },
+              {
+                label: 'Miner kW',
+                data: minerVals,
+                borderColor: '#a78bfa',
+                backgroundColor: 'transparent',
+                borderWidth: 1.5,
+                pointRadius: 0,
+                tension: 0.3,
+                yAxisID: 'y1',
+              },
+            ]
           },
           options: {
             responsive: true,
             maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
             scales: {
               x: {
                 ticks: { color: '#94a3b8', maxTicksLimit: 8 },
                 grid:  { color: '#2a2d3a' },
               },
               y: {
+                type: 'linear',
+                position: 'left',
                 min: 0, max: 100,
-                ticks: { color: '#94a3b8', callback: v => v + '%' },
+                ticks: { color: '#f59e0b', callback: v => v + '%' },
                 grid:  { color: '#2a2d3a' },
-              }
+              },
+              y1: {
+                type: 'linear',
+                position: 'right',
+                ticks: { color: '#94a3b8', callback: v => v.toFixed(1) + ' kW' },
+                grid:  { drawOnChartArea: false },
+              },
             },
             plugins: {
-              legend: { display: false },
+              legend: {
+                display: true,
+                labels: { color: '#94a3b8', boxWidth: 12, font: { size: 11 } },
+              },
               tooltip: {
                 callbacks: {
-                  label: ctx => {
-                    const row = rows[ctx.dataIndex];
-                    const mining = row.miner_running ? ' ⛏ mining' : '';
-                    return `SOC: ${ctx.parsed.y.toFixed(1)}%${mining}`;
+                  label: c => {
+                    if (c.dataset.yAxisID === 'y') {
+                      const mining = rows[c.dataIndex]?.miner_running ? ' ⛏' : '';
+                      return `SOC: ${c.parsed.y.toFixed(1)}%${mining}`;
+                    }
+                    return `${c.dataset.label}: ${c.parsed.y.toFixed(2)} kW`;
                   }
                 }
               }
@@ -1015,6 +1076,10 @@
         socChart.data.datasets[0].data = socVals;
         socChart.data.datasets[0].pointBackgroundColor = bgColors;
         socChart.data.datasets[0].pointBorderColor = bgColors;
+        socChart.data.datasets[1].data = pvVals;
+        socChart.data.datasets[2].data = gridVals;
+        socChart.data.datasets[3].data = loadVals;
+        socChart.data.datasets[4].data = minerVals;
         socChart.update('none');
       }
     } catch(e) {

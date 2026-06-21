@@ -17,7 +17,7 @@ class LuxOsClient:
     """
 
     def __init__(self, ip: str, port: int = 4028, timeout: float = 10.0):
-        self.ip = ip
+        self.ip = ip.strip()
         self.port = port
         self.timeout = timeout
         self._session_id: Optional[str] = None
