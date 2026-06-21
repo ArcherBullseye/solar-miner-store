@@ -19,6 +19,7 @@ from luxos_api import LuxOsClient, LuxOsError
 from weather import get_weather, parse_weather, geocode as do_geocode
 from telegram_bot import TelegramBot
 from lux_pool import LuxPoolClient
+from dehumidifier import DehumidifierClient
 
 load_dotenv()
 
@@ -42,6 +43,11 @@ state = {
     "eod_projected_with": None,
     "eod_projected_without": None,
     "eod_protecting": False,
+    "dehum_power": None,
+    "dehum_humidity": None,
+    "dehum_tank_full": False,
+    "dehum_auto_on": False,
+    "dehum_error": None,
 }
 state_lock = threading.Lock()
 
@@ -624,6 +630,48 @@ def control_loop() -> None:
             elif not miner_ip and error_str is None:
                 error_str = "Miner IP not configured"
 
+            # ── Dehumidifier auto control ─────────────────────────
+            dehum_id  = settings.get("dehum_device_id", "").strip()
+            dehum_ip  = settings.get("dehum_ip", "").strip()
+            dehum_key = settings.get("dehum_local_key", "").strip()
+            dehum_auto = bool(settings.get("dehum_auto_enabled", False))
+            dehum_threshold = float(settings.get("dehum_excess_threshold_w") or 500.0)
+            dehum_ver = float(settings.get("dehum_version") or 3.3)
+
+            if dehum_id and dehum_ip and dehum_key:
+                try:
+                    dc = DehumidifierClient(dehum_id, dehum_ip, dehum_key, dehum_ver)
+                    status = dc.get_status()
+                    if status:
+                        dehum_power    = status["power"]
+                        dehum_humidity = status["humidity"]
+                        dehum_tank     = status["tank_full"]
+                        dehum_auto_on  = False
+                        dehum_err      = None
+
+                        if dehum_auto and readings is not None and not dehum_tank:
+                            grid_w = readings.get("grid_power_w", 0) or 0
+                            # Hysteresis: turn on above threshold, off below threshold-200
+                            if not dehum_power and grid_w > dehum_threshold:
+                                dc.set_power(True)
+                                dehum_power = True
+                                dehum_auto_on = True
+                            elif dehum_power and grid_w < (dehum_threshold - 200):
+                                dc.set_power(False)
+                                dehum_power = False
+                            elif dehum_power:
+                                dehum_auto_on = True
+
+                        with state_lock:
+                            state["dehum_power"]    = dehum_power
+                            state["dehum_humidity"]  = dehum_humidity
+                            state["dehum_tank_full"] = dehum_tank
+                            state["dehum_auto_on"]   = dehum_auto_on
+                            state["dehum_error"]     = None
+                except Exception as e:
+                    with state_lock:
+                        state["dehum_error"] = str(e)
+
             now_str = datetime.now(timezone.utc).isoformat()
 
             with state_lock:
@@ -775,6 +823,47 @@ def api_daily_sats():
     return jsonify(get_daily_sats(days))
 
 
+@app.route("/api/dehum/test")
+def api_dehum_test():
+    settings = get_settings()
+    dehum_id  = settings.get("dehum_device_id", "").strip()
+    dehum_ip  = settings.get("dehum_ip", "").strip()
+    dehum_key = settings.get("dehum_local_key", "").strip()
+    dehum_ver = float(settings.get("dehum_version") or 3.3)
+    if not (dehum_id and dehum_ip and dehum_key):
+        return jsonify({"error": "Not configured"}), 400
+    try:
+        dc = DehumidifierClient(dehum_id, dehum_ip, dehum_key, dehum_ver)
+        raw = dc.raw_status()
+        return jsonify({"raw": raw})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/dehum/power", methods=["POST"])
+def api_dehum_power():
+    on = request.json.get("on")
+    if on is None:
+        return jsonify({"error": "missing 'on' field"}), 400
+    settings = get_settings()
+    dehum_id  = settings.get("dehum_device_id", "").strip()
+    dehum_ip  = settings.get("dehum_ip", "").strip()
+    dehum_key = settings.get("dehum_local_key", "").strip()
+    dehum_ver = float(settings.get("dehum_version") or 3.3)
+    if not (dehum_id and dehum_ip and dehum_key):
+        return jsonify({"error": "Dehumidifier not configured"}), 400
+    try:
+        dc = DehumidifierClient(dehum_id, dehum_ip, dehum_key, dehum_ver)
+        ok = dc.set_power(bool(on))
+        if ok:
+            with state_lock:
+                state["dehum_power"] = bool(on)
+                state["dehum_auto_on"] = False
+        return jsonify({"ok": ok})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/reset_efficiency", methods=["POST"])
 def api_reset_efficiency():
     reset_pv_efficiency()
@@ -789,6 +878,8 @@ def api_get_settings():
         settings["solis_api_secret"] = "••••" + secret[-4:]
     else:
         settings["solis_api_secret"] = "••••"
+    if settings.get("dehum_local_key"):
+        settings["dehum_local_key"] = "••••"
     return jsonify(settings)
 
 
@@ -797,6 +888,8 @@ def api_post_settings():
     data = request.get_json(force=True) or {}
     if "solis_api_secret" in data and str(data["solis_api_secret"]).startswith("••••"):
         del data["solis_api_secret"]
+    if "dehum_local_key" in data and str(data["dehum_local_key"]).startswith("••••"):
+        del data["dehum_local_key"]
 
     numeric_keys = [
         "poll_interval_seconds", "soc_on_threshold", "soc_off_threshold",
@@ -804,7 +897,8 @@ def api_post_settings():
         "sunny_hours_threshold", "radiation_threshold_wm2",
         "location_lat", "location_lon",
         "battery_capacity_kwh", "pv_peak_kw", "miner_power_w",
-        "eod_soc_target", "api_fail_cycles",
+        "eod_soc_target", "dehum_excess_threshold_w", "dehum_version",
+        "api_fail_cycles",
         "tg_soc_low_pct", "tg_hashrate_drop_pct", "tg_daily_hour",
         "tg_sats_milestone_amount",
     ]
@@ -820,7 +914,7 @@ def api_post_settings():
                 pass
 
     bool_keys = [
-        "smart_start_enabled", "eod_soc_target_enabled",
+        "smart_start_enabled", "eod_soc_target_enabled", "dehum_auto_enabled",
         "tg_miner_onoff", "tg_smart_start", "tg_api_failure",
         "tg_soc_low", "tg_soc_full", "tg_hashrate_drop",
         "tg_daily_summary", "tg_sats_milestone", "tg_sunny_day_ahead",

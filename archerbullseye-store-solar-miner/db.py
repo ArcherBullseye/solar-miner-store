@@ -52,6 +52,13 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     # End-of-day battery target
     "eod_soc_target_enabled": False,
     "eod_soc_target": 80.0,
+    # Dehumidifier (Tuya local)
+    "dehum_device_id": "",
+    "dehum_ip": "",
+    "dehum_local_key": "",
+    "dehum_version": 3.4,
+    "dehum_auto_enabled": False,
+    "dehum_excess_threshold_w": 500.0,
 }
 
 

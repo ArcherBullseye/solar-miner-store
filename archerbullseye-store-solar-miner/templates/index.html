@@ -151,7 +151,7 @@
     }
     /* Weather card: icon+meta on left, hourly scroll on right — single row height */
     .wx-card {
-      grid-column: span 4;
+      grid-column: span 3;
       min-width: 0;
       display: flex;
       flex-direction: row;
@@ -175,7 +175,7 @@
     .hourly-scroll {
       display: flex;
       gap: clamp(5px, .6vw, 8px);
-      overflow-x: auto;
+      overflow-x: hidden;
       padding-bottom: 2px;
       flex: 1;
       align-items: center;
@@ -569,7 +569,7 @@
   <div class="info-row">
 
     <div class="card sats-card">
-      <div class="card-label">⛏ Sats (24h)</div>
+      <div class="card-label">⛏ Sats (Today)</div>
       <div class="card-value" id="pool-sats-today" style="font-size:20px;">—</div>
       <div class="card-sub" id="pool-today-usd" style="color:var(--green);margin-bottom:4px;">—</div>
       <div class="card-sub" id="pool-hashrate" style="font-size:11px;"></div>
@@ -601,6 +601,23 @@
       <div class="hourly-scroll" id="hourly-row">
         <div style="color:var(--muted);font-size:12px;padding:4px;">Configure location in Settings for forecast.</div>
       </div>
+    </div>
+
+    <!-- Dehumidifier (combined) -->
+    <div class="card">
+      <div class="card-label" style="display:flex;align-items:center;gap:6px;">
+        💧 Dehumid
+        <span class="badge badge-gray" id="dehum-badge">—</span>
+        <span class="badge badge-green" id="dehum-auto-badge" style="display:none;">Auto</span>
+      </div>
+      <div class="card-value" id="dehum-humidity" style="font-size:clamp(18px,2vw,26px);">—</div>
+      <div class="card-sub" id="dehum-tank" style="display:none;color:var(--red);">⚠ Tank Full</div>
+      <div class="card-sub" id="dehum-error" style="display:none;color:var(--muted);font-size:10px;"></div>
+      <div style="display:flex;gap:6px;margin-top:8px;">
+        <button class="btn-amber" id="dehum-on-btn" onclick="dehum(true)" style="flex:1;padding:.35em 0;font-size:.8em;">ON</button>
+        <button class="btn-secondary" id="dehum-off-btn" onclick="dehum(false)" style="flex:1;padding:.35em 0;font-size:.8em;">OFF</button>
+      </div>
+      <div class="card-sub" id="dehum-excess" style="margin-top:6px;font-size:11px;">—</div>
     </div>
 
   </div>
@@ -659,6 +676,9 @@
         </button>
         <button class="settings-nav-item" onclick="showPanel('pool',this)">
           <span class="nav-icon">🏊</span> Pool
+        </button>
+        <button class="settings-nav-item" onclick="showPanel('dehum',this)">
+          <span class="nav-icon">💧</span> Dehum
         </button>
         <button class="settings-nav-item" onclick="showPanel('alerts',this)">
           <span class="nav-icon">📡</span> Alerts
@@ -829,6 +849,45 @@
         </div>
 
         <!-- Pool -->
+        <!-- Dehumidifier -->
+        <div class="settings-panel" id="panel-dehum">
+          <div class="panel-title">Dehumidifier (Tuya Local)</div>
+          <div class="form-hint" style="margin-bottom:1em;">
+            Requires a Tuya developer account to obtain the local key.
+            Pair the device in Smart Life, then run <code>python -m tinytuya wizard</code>
+            on any PC on the same network to discover your Device ID and Local Key.
+          </div>
+          <div class="form-group">
+            <label>Device ID</label>
+            <input type="text" id="s-dehum_device_id" placeholder="e.g. bfabcd1234567890" />
+          </div>
+          <div class="form-group">
+            <label>Device IP</label>
+            <input type="text" id="s-dehum_ip" placeholder="e.g. 192.168.1.50" />
+            <div class="form-hint">Assign a static IP to the dehumidifier in your router.</div>
+          </div>
+          <div class="form-group">
+            <label>Local Key</label>
+            <input type="password" id="s-dehum_local_key" placeholder="16-character local key" />
+          </div>
+          <div class="form-group">
+            <label>Tuya Protocol Version</label>
+            <input type="number" id="s-dehum_version" step="0.1" min="3.1" max="3.5" placeholder="3.3" />
+            <div class="form-hint">Usually 3.3 for modern devices. Try 3.4 or 3.5 if 3.3 fails.</div>
+          </div>
+          <div class="form-group" style="margin-top:.5em;">
+            <label style="display:flex;align-items:center;gap:8px;">
+              <input type="checkbox" id="s-dehum_auto_enabled" />
+              Enable Auto Mode (run on excess solar)
+            </label>
+          </div>
+          <div class="form-group">
+            <label>Excess Power Threshold (W)</label>
+            <input type="number" id="s-dehum_excess_threshold_w" step="50" min="0" placeholder="500" />
+            <div class="form-hint">Turn dehumidifier ON when grid export exceeds this. Turns OFF when export drops 200W below threshold.</div>
+          </div>
+        </div>
+
         <div class="settings-panel" id="panel-pool">
           <div class="panel-title">Lux Mining Pool</div>
           <div class="form-group">
@@ -1301,6 +1360,36 @@
         eodEl.style.display = 'none';
       }
 
+      // Dehumidifier
+      const dehumBadge  = el('dehum-badge');
+      const dehumErrEl  = el('dehum-error');
+      const dehumAutoB  = el('dehum-auto-badge');
+      if (s.dehum_power !== null && s.dehum_power !== undefined) {
+        dehumBadge.textContent = s.dehum_power ? 'Running' : 'Idle';
+        dehumBadge.className   = 'badge ' + (s.dehum_power ? 'badge-green' : 'badge-gray');
+        el('dehum-humidity').textContent = s.dehum_humidity != null ? s.dehum_humidity + '%' : '—';
+        el('dehum-tank').style.display = s.dehum_tank_full ? '' : 'none';
+        dehumAutoB.style.display = s.dehum_auto_on ? '' : 'none';
+        dehumAutoB.className = 'badge badge-green';
+        dehumErrEl.style.display = 'none';
+        el('dehum-on-btn').className  = s.dehum_power ? 'btn-amber'     : 'btn-secondary';
+        el('dehum-off-btn').className = s.dehum_power ? 'btn-secondary' : 'btn-amber';
+      } else if (s.dehum_error) {
+        dehumBadge.textContent = 'Error';
+        dehumBadge.className   = 'badge badge-red';
+        dehumErrEl.textContent = s.dehum_error;
+        dehumErrEl.style.display = '';
+        dehumAutoB.style.display = 'none';
+      } else {
+        dehumBadge.textContent = 'N/C';
+        dehumBadge.className   = 'badge badge-gray';
+        dehumAutoB.style.display = 'none';
+      }
+      const gridW = s.readings ? (s.readings.grid_power_w || 0) : 0;
+      el('dehum-excess').textContent = gridW > 0
+        ? `Exporting ${(gridW/1000).toFixed(2)} kW`
+        : gridW < 0 ? `Importing ${(Math.abs(gridW)/1000).toFixed(2)} kW` : 'Grid: balanced';
+
       // Weather
       if (wx) {
         el('wx-icon').textContent      = wx.current_icon || '—';
@@ -1323,7 +1412,7 @@
         // Hourly forecast
         const row = el('hourly-row');
         if (wx.hourly && wx.hourly.length) {
-          row.innerHTML = wx.hourly.map(h => {
+          row.innerHTML = wx.hourly.slice(0, 5).map(h => {
             const hour = h.time ? parseInt(h.time.split(':')[0]) : null;
             return `<div class="hour-card">
               <div class="time">${h.time}</div>
@@ -1408,7 +1497,8 @@
         'sunny_hours_threshold','radiation_threshold_wm2',
         'location_lat','location_lon',
         'battery_capacity_kwh','pv_peak_kw','miner_power_w',
-        'eod_soc_target', 'api_fail_cycles',
+        'eod_soc_target', 'dehum_excess_threshold_w', 'dehum_version',
+        'api_fail_cycles',
         'tg_soc_low_pct','tg_hashrate_drop_pct','tg_daily_hour','tg_sats_milestone_amount',
       ];
 
@@ -1424,8 +1514,11 @@
         const inp = el('s-' + k);
         if (inp && s[k] != null) inp.value = s[k];
       }
+      const strKeys  = ['dehum_device_id','dehum_ip','lux_pool_username','lux_pool_api_url'];
+      for (const k of strKeys) { const i = el('s-'+k); if (i && s[k] != null) i.value = s[k]; }
+
       const boolKeys = [
-        'smart_start_enabled', 'eod_soc_target_enabled',
+        'smart_start_enabled', 'eod_soc_target_enabled', 'dehum_auto_enabled',
         'tg_miner_onoff','tg_smart_start','tg_api_failure',
         'tg_soc_low','tg_soc_full','tg_hashrate_drop',
         'tg_daily_summary','tg_sats_milestone','tg_sunny_day_ahead',
@@ -1467,6 +1560,12 @@
       radiation_threshold_wm2: Number(el('s-radiation_threshold_wm2').value),
       eod_soc_target_enabled:  el('s-eod_soc_target_enabled').checked,
       eod_soc_target:          Number(el('s-eod_soc_target').value) || 80,
+      dehum_device_id:         el('s-dehum_device_id').value,
+      dehum_ip:                el('s-dehum_ip').value,
+      dehum_local_key:         el('s-dehum_local_key').value || '••••',
+      dehum_version:           Number(el('s-dehum_version').value) || 3.3,
+      dehum_auto_enabled:      el('s-dehum_auto_enabled').checked,
+      dehum_excess_threshold_w: Number(el('s-dehum_excess_threshold_w').value) || 500,
       location_name:           el('s-location_name').value,
       location_lat:            Number(el('s-location_lat').value),
       location_lon:            Number(el('s-location_lon').value),
@@ -1626,6 +1725,18 @@
   }
 
   // ── Auto-refresh ─────────────────────────────────────────────
+  async function dehum(on) {
+    try {
+      const r = await fetch('/api/dehum/power', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({on}),
+      });
+      if (!r.ok) { const d = await r.json(); alert('Error: ' + (d.error || r.status)); return; }
+      await refresh();
+    } catch(e) { alert('Request failed: ' + e); }
+  }
+
   setInterval(() => { refresh(); loadHistory(); loadDailySats(); }, 30000);
 
   window.onload = () => { refresh(); loadHistory(); loadDailySats(); };
