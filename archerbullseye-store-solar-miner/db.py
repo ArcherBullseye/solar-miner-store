@@ -92,6 +92,12 @@ def init_db() -> None:
                 hashrate_mhs    REAL DEFAULT 0.0
             )
         """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS daily_sats (
+                date TEXT PRIMARY KEY,
+                sats INTEGER NOT NULL DEFAULT 0
+            )
+        """)
         # Migrate existing tables that pre-date hashrate_mhs
         try:
             cur.execute("ALTER TABLE readings ADD COLUMN hashrate_mhs REAL DEFAULT 0.0")
@@ -214,6 +220,34 @@ def get_pv_efficiency() -> Dict[int, float]:
             for row in cur.fetchall()
             if row["sample_count"] >= 3  # need at least 3 samples to trust
         }
+    finally:
+        conn.close()
+
+
+def upsert_daily_sats(date_str: str, sats: int) -> None:
+    conn = _connect()
+    try:
+        conn.execute(
+            """
+            INSERT INTO daily_sats(date, sats) VALUES(?, ?)
+            ON CONFLICT(date) DO UPDATE SET sats = MAX(sats, excluded.sats)
+            """,
+            (date_str, sats),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_daily_sats(days: int = 7) -> List[Dict[str, Any]]:
+    conn = _connect()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT date, sats FROM daily_sats ORDER BY date DESC LIMIT ?",
+            (days,),
+        )
+        return list(reversed([dict(r) for r in cur.fetchall()]))
     finally:
         conn.close()
 

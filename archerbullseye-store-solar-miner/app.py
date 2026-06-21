@@ -13,7 +13,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module="urllib3")
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
 
-from db import init_db, get_settings, update_settings, save_reading, get_recent_readings, update_pv_efficiency, get_pv_efficiency
+from db import init_db, get_settings, update_settings, save_reading, get_recent_readings, update_pv_efficiency, get_pv_efficiency, upsert_daily_sats, get_daily_sats
 from solis_api import SolisClient, SolisApiError, parse_power_and_soc
 from luxos_api import LuxOsClient, LuxOsError
 from weather import get_weather, parse_weather, geocode as do_geocode
@@ -626,6 +626,10 @@ def pool_loop() -> None:
                     with state_lock:
                         state["pool"] = summary
                         state["pool_last_updated"] = now_str
+                    sats = summary.get("sats_today", 0) or 0
+                    if sats > 0:
+                        today = datetime.now().strftime("%Y-%m-%d")
+                        upsert_daily_sats(today, sats)
         except Exception as e:
             print(f"Pool loop error: {e}")
         time.sleep(300)  # refresh every 5 minutes
@@ -653,6 +657,12 @@ def api_history():
     hours = int(request.args.get("hours", 2))
     rows = get_recent_readings(hours)
     return jsonify(rows)
+
+
+@app.route("/api/daily_sats")
+def api_daily_sats():
+    days = int(request.args.get("days", 7))
+    return jsonify(get_daily_sats(days))
 
 
 @app.route("/api/settings", methods=["GET"])
