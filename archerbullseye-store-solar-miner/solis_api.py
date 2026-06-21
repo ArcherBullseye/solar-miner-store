@@ -75,11 +75,12 @@ def parse_power_and_soc(inverter_data: dict) -> dict:
     # Grid — psumOrgin is watts, positive = exporting to grid, negative = importing
     grid_power_w = float(inverter_data.get("psumOrgin") or 0.0)
 
-    # Home load (main panel)
-    load_power_w = float(inverter_data.get("familyLoadPowerOrigin") or 0.0)
-
-    # Backup / bypass circuit
+    # Backup / bypass circuit (miner)
     backup_power_w = float(inverter_data.get("bypassLoadPowerOriginal") or 0.0)
+
+    # familyLoadPowerOrigin is total load including backup/EPS port.
+    # Subtract backup to get main panel (house) only.
+    load_power_w = max(0.0, float(inverter_data.get("familyLoadPowerOrigin") or 0.0) - backup_power_w)
 
     return {
         "soc": soc,
