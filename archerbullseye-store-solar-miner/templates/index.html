@@ -1037,7 +1037,7 @@
                 pointRadius: 1,
                 pointBackgroundColor: bgColors,
                 pointBorderColor: bgColors,
-                tension: 0.3,
+                tension: 0.4,
                 fill: true,
                 yAxisID: 'y',
               },
@@ -1048,7 +1048,7 @@
                 backgroundColor: 'transparent',
                 borderWidth: 1.5,
                 pointRadius: 0,
-                tension: 0.3,
+                tension: 0.4,
                 yAxisID: 'y1',
               },
               {
@@ -1058,7 +1058,7 @@
                 backgroundColor: 'transparent',
                 borderWidth: 1.5,
                 pointRadius: 0,
-                tension: 0.3,
+                tension: 0.4,
                 yAxisID: 'y1',
               },
               {
@@ -1068,7 +1068,7 @@
                 backgroundColor: 'transparent',
                 borderWidth: 1.5,
                 pointRadius: 0,
-                tension: 0.3,
+                tension: 0.4,
                 yAxisID: 'y1',
               },
               {
@@ -1078,7 +1078,7 @@
                 backgroundColor: 'transparent',
                 borderWidth: 1.5,
                 pointRadius: 0,
-                tension: 0.3,
+                tension: 0.4,
                 yAxisID: 'y1',
               },
             ]
@@ -1351,8 +1351,11 @@
         const usd = (sats / 1e8) * btcPrice;
         return usd < 0.01 ? '<$0.01' : '$' + usd.toFixed(2);
       }
+      const todaySats = s.today_sats || 0;
+      el('pool-sats-today').textContent = todaySats.toLocaleString() + ' sats';
+      el('pool-today-usd').textContent  = satsToUsd(todaySats);
+
       if (pool) {
-        const today  = pool.sats_today || 0;
         const unpaid = pool.unpaid_sats || 0;
 
         // Use 5m hashrate if non-zero, else fall back to 24h average
@@ -1361,16 +1364,12 @@
         const hrDisplay = hr5m > 0 ? hr5m : hr24h;
         const hrLabel   = hr5m > 0 ? 'TH/s live' : (hr24h > 0 ? 'TH/s 24h avg' : '');
 
-        el('pool-sats-today').textContent  = today.toLocaleString() + ' sats';
-        el('pool-today-usd').textContent   = satsToUsd(today);
         el('pool-sats-unpaid').textContent = unpaid.toLocaleString() + ' sats';
         el('pool-unpaid-usd').textContent  = satsToUsd(unpaid);
         el('pool-hashrate').textContent    = hrDisplay > 0 ? hrDisplay.toFixed(2) + ' ' + hrLabel : '';
         const uptime = pool.uptime_pct != null ? pool.uptime_pct.toFixed(0) + '% uptime 24h' : '';
         el('pool-shares').textContent      = uptime;
       } else {
-        el('pool-sats-today').textContent  = '—';
-        el('pool-today-usd').textContent   = 'Configure pool in Settings';
         el('pool-sats-unpaid').textContent = '—';
         el('pool-unpaid-usd').textContent  = '';
         el('pool-hashrate').textContent    = '';

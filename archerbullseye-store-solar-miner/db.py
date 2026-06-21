@@ -287,6 +287,18 @@ def add_daily_sats_delta(date_str: str, delta: int) -> None:
         conn.close()
 
 
+def get_today_sats() -> int:
+    today = datetime.now().strftime("%Y-%m-%d")
+    conn = _connect()
+    try:
+        row = conn.execute(
+            "SELECT sats FROM daily_sats WHERE date = ?", (today,)
+        ).fetchone()
+        return int(row["sats"]) if row else 0
+    finally:
+        conn.close()
+
+
 def get_daily_sats(days: int = 7) -> List[Dict[str, Any]]:
     conn = _connect()
     try:

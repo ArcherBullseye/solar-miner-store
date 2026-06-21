@@ -13,7 +13,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module="urllib3")
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
 
-from db import init_db, get_settings, update_settings, save_reading, get_recent_readings, update_pv_efficiency, get_pv_efficiency, add_daily_sats_delta, get_daily_sats, reset_pv_efficiency, get_hourly_load_profile
+from db import init_db, get_settings, update_settings, save_reading, get_recent_readings, update_pv_efficiency, get_pv_efficiency, add_daily_sats_delta, get_daily_sats, get_today_sats, reset_pv_efficiency, get_hourly_load_profile
 from solis_api import SolisClient, SolisApiError, parse_power_and_soc
 from luxos_api import LuxOsClient, LuxOsError
 from weather import get_weather, parse_weather, geocode as do_geocode
@@ -758,6 +758,7 @@ def api_status():
     snapshot["pv_peak_kw"] = float(settings.get("pv_peak_kw") or 0.0)
     snapshot["eod_soc_target"]         = float(settings.get("eod_soc_target") or 80.0)
     snapshot["eod_soc_target_enabled"] = bool(settings.get("eod_soc_target_enabled", False))
+    snapshot["today_sats"]             = get_today_sats()
     return jsonify(snapshot)
 
 
