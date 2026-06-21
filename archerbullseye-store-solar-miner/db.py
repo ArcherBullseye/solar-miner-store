@@ -59,6 +59,9 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "dehum_version": 3.4,
     "dehum_auto_enabled": False,
     "dehum_excess_threshold_w": 500.0,
+    "dehum_min_run_minutes": 30,
+    "dehum_min_off_minutes": 15,
+    "dehum_manual_override_hours": 2,
 }
 
 

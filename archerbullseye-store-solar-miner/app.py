@@ -48,6 +48,9 @@ state = {
     "dehum_tank_full": False,
     "dehum_auto_on": False,
     "dehum_error": None,
+    "dehum_auto_on_since": None,
+    "dehum_auto_off_since": None,
+    "dehum_manual_override_until": None,
 }
 state_lock = threading.Lock()
 
@@ -637,6 +640,8 @@ def control_loop() -> None:
             dehum_auto = bool(settings.get("dehum_auto_enabled", False))
             dehum_threshold = float(settings.get("dehum_excess_threshold_w") or 500.0)
             dehum_ver = float(settings.get("dehum_version") or 3.3)
+            min_run_s = float(settings.get("dehum_min_run_minutes") or 30) * 60
+            min_off_s = float(settings.get("dehum_min_off_minutes") or 15) * 60
 
             if dehum_id and dehum_ip and dehum_key:
                 try:
@@ -647,27 +652,50 @@ def control_loop() -> None:
                         dehum_humidity = status["humidity"]
                         dehum_tank     = status["tank_full"]
                         dehum_auto_on  = False
-                        dehum_err      = None
 
-                        if dehum_auto and readings is not None and not dehum_tank:
+                        now_ts = time.time()
+                        with state_lock:
+                            manual_until  = state.get("dehum_manual_override_until")
+                            auto_on_since  = state.get("dehum_auto_on_since")
+                            auto_off_since = state.get("dehum_auto_off_since")
+
+                        # expire manual override
+                        if manual_until and now_ts >= manual_until:
+                            manual_until = None
+                            with state_lock:
+                                state["dehum_manual_override_until"] = None
+
+                        if dehum_auto and readings is not None and not dehum_tank and not manual_until:
                             grid_w = readings.get("grid_power_w", 0) or 0
-                            # Hysteresis: turn on above threshold, off below threshold-200
+
                             if not dehum_power and grid_w > dehum_threshold:
-                                dc.set_power(True)
-                                dehum_power = True
-                                dehum_auto_on = True
+                                # Respect min-off time before turning back on
+                                if auto_off_since is None or (now_ts - auto_off_since) >= min_off_s:
+                                    dc.set_power(True)
+                                    dehum_power = True
+                                    auto_on_since = now_ts
+                                    auto_off_since = None
+                                dehum_auto_on = dehum_power
                             elif dehum_power and grid_w < (dehum_threshold - 200):
-                                dc.set_power(False)
-                                dehum_power = False
+                                # Respect min-run time before turning off
+                                if auto_on_since is None or (now_ts - auto_on_since) >= min_run_s:
+                                    dc.set_power(False)
+                                    dehum_power = False
+                                    auto_off_since = now_ts
+                                    auto_on_since = None
+                                else:
+                                    dehum_auto_on = True  # still in min-run window
                             elif dehum_power:
                                 dehum_auto_on = True
 
                         with state_lock:
-                            state["dehum_power"]    = dehum_power
-                            state["dehum_humidity"]  = dehum_humidity
-                            state["dehum_tank_full"] = dehum_tank
-                            state["dehum_auto_on"]   = dehum_auto_on
-                            state["dehum_error"]     = None
+                            state["dehum_power"]               = dehum_power
+                            state["dehum_humidity"]             = dehum_humidity
+                            state["dehum_tank_full"]            = dehum_tank
+                            state["dehum_auto_on"]              = dehum_auto_on
+                            state["dehum_error"]                = None
+                            state["dehum_auto_on_since"]        = auto_on_since
+                            state["dehum_auto_off_since"]       = auto_off_since
                 except Exception as e:
                     with state_lock:
                         state["dehum_error"] = str(e)
@@ -853,12 +881,16 @@ def api_dehum_power():
     if not (dehum_id and dehum_ip and dehum_key):
         return jsonify({"error": "Dehumidifier not configured"}), 400
     try:
+        override_hours = float(settings.get("dehum_manual_override_hours") or 2)
         dc = DehumidifierClient(dehum_id, dehum_ip, dehum_key, dehum_ver)
         ok = dc.set_power(bool(on))
         if ok:
             with state_lock:
                 state["dehum_power"] = bool(on)
                 state["dehum_auto_on"] = False
+                state["dehum_manual_override_until"] = time.time() + override_hours * 3600
+                state["dehum_auto_on_since"] = None
+                state["dehum_auto_off_since"] = None
         return jsonify({"ok": ok})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -898,6 +930,7 @@ def api_post_settings():
         "location_lat", "location_lon",
         "battery_capacity_kwh", "pv_peak_kw", "miner_power_w",
         "eod_soc_target", "dehum_excess_threshold_w", "dehum_version",
+        "dehum_min_run_minutes", "dehum_min_off_minutes", "dehum_manual_override_hours",
         "api_fail_cycles",
         "tg_soc_low_pct", "tg_hashrate_drop_pct", "tg_daily_hour",
         "tg_sats_milestone_amount",
