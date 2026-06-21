@@ -539,12 +539,13 @@ def control_loop() -> None:
 
                     # EOD target override: project SOC at end of solar day and stop
                     # the miner early if running would cause us to miss the target.
-                    eod_target = float(settings.get("eod_soc_target") or 0.0)
+                    eod_enabled = bool(settings.get("eod_soc_target_enabled", False))
+                    eod_target  = float(settings.get("eod_soc_target") or 80.0)
                     battery_kwh = float(settings.get("battery_capacity_kwh") or 0.0)
                     eod_projected_with    = None
                     eod_projected_without = None
                     eod_protecting        = False
-                    if eod_target > 0.0 and battery_kwh > 0.0 and pv_peak_kw > 0.0:
+                    if eod_enabled and eod_target > 0.0 and battery_kwh > 0.0 and pv_peak_kw > 0.0:
                         hourly_wx   = (current_weather or {}).get("hourly", [])
                         load_profile = get_hourly_load_profile()
                         eff_map      = get_pv_efficiency()
@@ -566,7 +567,7 @@ def control_loop() -> None:
                             eod_protecting = True
 
                     with state_lock:
-                        state["eod_target"]            = eod_target if eod_target > 0 else None
+                        state["eod_target"]            = eod_target if eod_enabled else None
                         state["eod_projected_with"]    = eod_projected_with
                         state["eod_projected_without"] = eod_projected_without
                         state["eod_protecting"]        = eod_protecting
@@ -755,7 +756,8 @@ def api_status():
     snapshot["pv_efficiency"] = get_pv_efficiency()
     settings = get_settings()
     snapshot["pv_peak_kw"] = float(settings.get("pv_peak_kw") or 0.0)
-    snapshot["eod_soc_target"] = float(settings.get("eod_soc_target") or 0.0)
+    snapshot["eod_soc_target"]         = float(settings.get("eod_soc_target") or 80.0)
+    snapshot["eod_soc_target_enabled"] = bool(settings.get("eod_soc_target_enabled", False))
     return jsonify(snapshot)
 
 
@@ -801,8 +803,7 @@ def api_post_settings():
         "sunny_hours_threshold", "radiation_threshold_wm2",
         "location_lat", "location_lon",
         "battery_capacity_kwh", "pv_peak_kw", "miner_power_w",
-        "eod_soc_target",
-        "api_fail_cycles",
+        "eod_soc_target", "api_fail_cycles",
         "tg_soc_low_pct", "tg_hashrate_drop_pct", "tg_daily_hour",
         "tg_sats_milestone_amount",
     ]
@@ -818,7 +819,7 @@ def api_post_settings():
                 pass
 
     bool_keys = [
-        "smart_start_enabled",
+        "smart_start_enabled", "eod_soc_target_enabled",
         "tg_miner_onoff", "tg_smart_start", "tg_api_failure",
         "tg_soc_low", "tg_soc_full", "tg_hashrate_drop",
         "tg_daily_summary", "tg_sats_milestone", "tg_sunny_day_ahead",

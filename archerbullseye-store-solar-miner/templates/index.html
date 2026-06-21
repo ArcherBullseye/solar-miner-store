@@ -556,8 +556,7 @@
     </div>
 
     <div class="card">
-      <div class="card-label">🧠 Smart Start</div>
-      <span class="badge badge-gray" id="smart-badge">INACTIVE</span>
+      <div class="card-label" style="display:flex;align-items:center;gap:6px;">🧠 Smart Start <span class="badge badge-gray" id="smart-badge">Smart</span></div>
       <div class="card-sub" style="margin-top:8px;" id="smart-sunny">—</div>
       <div class="card-sub" id="smart-threshold">SOC ON: —</div>
       <div class="card-sub" id="eod-projection" style="display:none;margin-top:4px;font-size:11px;"></div>
@@ -792,9 +791,16 @@
             </div>
           </div>
           <div class="form-group" style="margin-top:.5em;">
-            <label>End-of-Day Battery Target (%)</label>
-            <input type="number" id="s-eod_soc_target" step="1" min="0" max="100" placeholder="0 = disabled" />
-            <div class="form-hint">Smart Start will shut the miner off early if keeping it running would cause the battery to end the solar day below this SOC. Set to 0 to disable.</div>
+            <label style="display:flex;align-items:center;gap:8px;">
+              <input type="checkbox" id="s-eod_soc_target_enabled" onchange="el('s-eod_soc_target').disabled=!this.checked" />
+              Enable End-of-Day Battery Target
+            </label>
+            <div class="form-hint">When enabled, Smart Start will shut the miner off early if running it would cause the battery to fall below the target SOC at sunset. Enable only after a few days of load data has accumulated.</div>
+          </div>
+          <div class="form-group">
+            <label>End-of-Day SOC Target (%)</label>
+            <input type="number" id="s-eod_soc_target" step="1" min="0" max="100" placeholder="e.g. 80" />
+            <div class="form-hint">Target battery % to reach by end of solar generation each day.</div>
           </div>
         </div>
 
@@ -1266,23 +1272,19 @@
 
       // Smart start
       const smartBadge = el('smart-badge');
-      if (s.smart_start_active) {
-        smartBadge.textContent = 'ACTIVE';
-        smartBadge.className = 'badge badge-green';
-      } else {
-        smartBadge.textContent = 'INACTIVE';
-        smartBadge.className = 'badge badge-gray';
-      }
+      smartBadge.textContent = 'Smart';
+      smartBadge.className = 'badge ' + (s.smart_start_active ? 'badge-green' : 'badge-gray');
       const wx = s.weather;
       const sunny = wx ? wx.remaining_sunny_hours : null;
       el('smart-sunny').textContent = 'Sunny hours remaining: ' + (sunny != null ? sunny : '—');
       el('smart-threshold').textContent = 'Effective SOC ON: ' + (s.effective_soc_on != null ? s.effective_soc_on.toFixed(1) + '%' : '—');
 
       const eodEl = el('eod-projection');
-      const eodTarget = s.eod_soc_target || 0;
+      const eodTarget  = s.eod_soc_target || 0;
+      const eodEnabled = s.eod_soc_target_enabled;
       const eodWith    = s.eod_projected_with;
       const eodWithout = s.eod_projected_without;
-      if (eodTarget > 0 && eodWith != null) {
+      if (eodEnabled && eodWith != null) {
         const color = s.eod_protecting ? 'var(--amber)' : (eodWith >= eodTarget ? 'var(--green)' : 'var(--red)');
         const label = s.eod_protecting ? '⚠ EOD protect active' : 'EOD est';
         eodEl.style.display = '';
@@ -1401,8 +1403,7 @@
         'sunny_hours_threshold','radiation_threshold_wm2',
         'location_lat','location_lon',
         'battery_capacity_kwh','pv_peak_kw','miner_power_w',
-        'eod_soc_target',
-        'api_fail_cycles',
+        'eod_soc_target', 'api_fail_cycles',
         'tg_soc_low_pct','tg_hashrate_drop_pct','tg_daily_hour','tg_sats_milestone_amount',
       ];
 
@@ -1419,7 +1420,7 @@
         if (inp && s[k] != null) inp.value = s[k];
       }
       const boolKeys = [
-        'smart_start_enabled',
+        'smart_start_enabled', 'eod_soc_target_enabled',
         'tg_miner_onoff','tg_smart_start','tg_api_failure',
         'tg_soc_low','tg_soc_full','tg_hashrate_drop',
         'tg_daily_summary','tg_sats_milestone','tg_sunny_day_ahead',
@@ -1428,6 +1429,7 @@
         const inp = el('s-' + k);
         if (inp) inp.checked = !!s[k];
       }
+      el('s-eod_soc_target').disabled = !el('s-eod_soc_target_enabled').checked;
 
       // Populate select for api_fail_action
       const sel = el('s-api_fail_action');
@@ -1458,7 +1460,8 @@
       smart_soc_off_threshold: Number(el('s-smart_soc_off_threshold').value),
       sunny_hours_threshold:   Number(el('s-sunny_hours_threshold').value),
       radiation_threshold_wm2: Number(el('s-radiation_threshold_wm2').value),
-      eod_soc_target:          Number(el('s-eod_soc_target').value) || 0,
+      eod_soc_target_enabled:  el('s-eod_soc_target_enabled').checked,
+      eod_soc_target:          Number(el('s-eod_soc_target').value) || 80,
       location_name:           el('s-location_name').value,
       location_lat:            Number(el('s-location_lat').value),
       location_lon:            Number(el('s-location_lon').value),
