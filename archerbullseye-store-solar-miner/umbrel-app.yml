@@ -1,8 +1,8 @@
 manifestVersion: 1
-id: solar-miner
+id: archerbullseye-store-solar-miner
 name: Solar Miner
 tagline: Control your Bitcoin miner with solar power
-icon: https://raw.githubusercontent.com/ArcherBullseye/solar-miner-store/main/solar-miner/static/icon.svg
+icon: https://raw.githubusercontent.com/ArcherBullseye/solar-miner-store/main/archerbullseye-store-solar-miner/static/icon.svg
 category: bitcoin
 version: "1.0.0"
 port: 3000
