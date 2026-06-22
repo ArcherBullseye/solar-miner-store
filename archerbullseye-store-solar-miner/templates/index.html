@@ -1432,7 +1432,8 @@
         }
         const curHour = new Date().getHours();
         const curEst = wx.current_radiation_w != null ? estSolar(wx.current_radiation_w, curHour) : '—';
-        el('wx-radiation').innerHTML = curEst;
+        const curRadLabel = wx.current_radiation_w != null ? `<div style="font-size:10px;color:var(--muted);margin-top:1px;">${Math.round(wx.current_radiation_w)} W/m²</div>` : '';
+        el('wx-radiation').innerHTML = curEst + curRadLabel;
 
         // Hourly forecast
         const row = el('hourly-row');
@@ -1444,6 +1445,7 @@
               <div class="emoji">${h.icon}</div>
               <div class="temp">${h.temp_f.toFixed(0)}°F</div>
               <div class="rad">${estSolar(h.radiation_w, hour)}</div>
+              <div class="rad">${h.radiation_w != null ? Math.round(h.radiation_w) + ' W/m²' : ''}</div>
             </div>`;
           }).join('');
         }

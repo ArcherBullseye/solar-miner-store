@@ -4,7 +4,7 @@ name: Solar Miner
 tagline: Control your Bitcoin miner with solar power
 icon: https://raw.githubusercontent.com/ArcherBullseye/solar-miner-store/main/archerbullseye-store-solar-miner/static/icon.svg
 category: bitcoin
-version: "1.3.6"
+version: "1.3.7"
 port: 3000
 description: >-
   Monitor your Solis solar inverter and automatically control your LuxOS
@@ -21,8 +21,7 @@ repo: https://github.com/ArcherBullseye/solar-miner-store
 support: https://github.com/ArcherBullseye/solar-miner-store/issues
 gallery: []
 releaseNotes: >-
-  v1.3.6: Dehumidifier pip indicator now scales relative to your configured
-  excess power threshold. Red = below 50% of threshold, yellow = 50-100%,
-  green = at or above threshold (auto would activate).
+  v1.3.7: Weather card now shows raw solar irradiance (W/m²) below the
+  estimated solar output for both current conditions and each hourly forecast.
 submitter: ArcherBullseye
 submission: https://github.com/ArcherBullseye/solar-miner-store
