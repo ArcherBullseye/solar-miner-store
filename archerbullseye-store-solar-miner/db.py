@@ -238,7 +238,7 @@ def update_pv_efficiency(hour_of_day: int, actual_w: float, radiation_wm2: float
 
 
 def get_pv_efficiency() -> Dict[int, float]:
-    """Returns {hour: avg_ratio} for all hours that have data."""
+    """Returns {hour: avg_ratio} for hours with ≥3 samples (trusted data only)."""
     conn = _connect()
     try:
         cur = conn.cursor()
@@ -246,8 +246,19 @@ def get_pv_efficiency() -> Dict[int, float]:
         return {
             row["hour_of_day"]: row["avg_ratio"]
             for row in cur.fetchall()
-            if row["sample_count"] >= 3  # need at least 3 samples to trust
+            if row["sample_count"] >= 3
         }
+    finally:
+        conn.close()
+
+
+def get_pv_efficiency_detail() -> list:
+    """Returns all efficiency rows with ratio and sample count, sorted by hour."""
+    conn = _connect()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT hour_of_day, avg_ratio, sample_count FROM pv_efficiency ORDER BY hour_of_day")
+        return [{"hour": row["hour_of_day"], "ratio": row["avg_ratio"], "samples": row["sample_count"]} for row in cur.fetchall()]
     finally:
         conn.close()
 

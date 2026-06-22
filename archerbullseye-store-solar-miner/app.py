@@ -13,7 +13,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module="urllib3")
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
 
-from db import init_db, get_settings, update_settings, save_reading, get_recent_readings, update_pv_efficiency, get_pv_efficiency, add_daily_sats_delta, get_daily_sats, get_today_sats, reset_pv_efficiency, get_hourly_load_profile
+from db import init_db, get_settings, update_settings, save_reading, get_recent_readings, update_pv_efficiency, get_pv_efficiency, get_pv_efficiency_detail, add_daily_sats_delta, get_daily_sats, get_today_sats, reset_pv_efficiency, get_hourly_load_profile
 from solis_api import SolisClient, SolisApiError, parse_power_and_soc
 from luxos_api import LuxOsClient, LuxOsError
 from weather import get_weather, parse_weather, geocode as do_geocode
@@ -923,6 +923,14 @@ def api_dehum_power():
 def api_reset_efficiency():
     reset_pv_efficiency()
     return jsonify({"ok": True})
+
+
+@app.route("/api/pv_efficiency")
+def api_pv_efficiency():
+    settings = get_settings()
+    pv_peak_kw = float(settings.get("pv_peak_kw") or 0.0)
+    rows = get_pv_efficiency_detail()
+    return jsonify({"rows": rows, "pv_peak_kw": pv_peak_kw})
 
 
 @app.route("/api/settings", methods=["GET"])

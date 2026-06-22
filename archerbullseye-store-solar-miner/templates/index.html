@@ -743,6 +743,15 @@
             <button type="button" id="btn-reset-eff" class="btn-secondary" style="padding:.35em .9em;font-size:.8em;">Reset</button>
             <div class="form-hint">Clear per-hour efficiency data so it relearns from scratch. Do this after correcting PV Peak Power.</div>
           </div>
+          <div class="form-group">
+            <div style="position:relative;height:180px;margin-top:4px;">
+              <canvas id="eff-chart"></canvas>
+            </div>
+            <div id="eff-chart-empty" style="display:none;color:var(--muted);font-size:11px;margin-top:6px;">No efficiency data yet — will populate after a few sunny days.</div>
+            <div class="form-hint" style="margin-top:6px;">
+              Each bar = avg actual output ÷ theoretical max for that hour. Green = trusted (≥3 samples), yellow = early data. Dashed line = 100% theoretical.
+            </div>
+          </div>
         </div>
 
         <!-- Control -->
@@ -1086,6 +1095,7 @@
   // ── SOC + Power Chart ────────────────────────────────────────
   let socChart = null;
   let hashrateChart = null;
+  let effChart = null;
   let historyHours = 12;
 
   function setHistoryWindow(hours) {
@@ -1530,6 +1540,7 @@
     document.querySelectorAll('.settings-nav-item').forEach(b => b.classList.remove('active'));
     el('panel-' + name).classList.add('active');
     btn.classList.add('active');
+    if (name === 'system') loadEffChart();
   }
 
   async function loadSettings() {
@@ -1691,6 +1702,87 @@
     } catch(e) {
       alert('Geocode error: ' + e);
     }
+  }
+
+  async function loadEffChart() {
+    try {
+      const resp = await fetch('/api/pv_efficiency');
+      if (!resp.ok) return;
+      const data = await resp.json();
+      const rows = data.rows || [];
+      const pvKw = data.pv_peak_kw || 0;
+
+      const emptyEl = el('eff-chart-empty');
+      const canvasEl = el('eff-chart');
+
+      if (!rows.length) {
+        canvasEl.style.display = 'none';
+        emptyEl.style.display = '';
+        return;
+      }
+      canvasEl.style.display = '';
+      emptyEl.style.display = 'none';
+
+      const labels  = rows.map(r => r.hour + ':00');
+      const ratios  = rows.map(r => +(r.ratio * 100).toFixed(1));
+      const trusted = rows.map(r => r.samples >= 3);
+      const colors  = trusted.map(t => t ? 'rgba(34,197,94,0.75)' : 'rgba(234,179,8,0.6)');
+      const borders = trusted.map(t => t ? 'rgba(34,197,94,1)' : 'rgba(234,179,8,1)');
+
+      if (effChart) { effChart.destroy(); effChart = null; }
+      effChart = new Chart(canvasEl.getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'Efficiency %',
+              data: ratios,
+              backgroundColor: colors,
+              borderColor: borders,
+              borderWidth: 1,
+              borderRadius: 3,
+              order: 2,
+            },
+            {
+              label: '100% theoretical',
+              data: labels.map(() => 100),
+              type: 'line',
+              borderColor: 'rgba(255,255,255,0.25)',
+              borderWidth: 1,
+              borderDash: [4, 4],
+              pointRadius: 0,
+              fill: false,
+              order: 1,
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              filter: (item) => item.datasetIndex === 0,
+              callbacks: {
+                label: (ctx) => {
+                  const r = rows[ctx.dataIndex];
+                  return [`${ctx.parsed.y.toFixed(1)}% of theoretical`, `${r.samples} sample${r.samples !== 1 ? 's' : ''}${r.samples < 3 ? ' (still learning)' : ''}`];
+                }
+              }
+            }
+          },
+          scales: {
+            x: { ticks: { color: '#888', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+            y: {
+              min: 0,
+              ticks: { color: '#888', font: { size: 10 }, callback: v => v + '%' },
+              grid: { color: 'rgba(255,255,255,0.05)' }
+            }
+          }
+        }
+      });
+    } catch(e) { console.warn('loadEffChart error:', e); }
   }
 
   function openSettings() {
