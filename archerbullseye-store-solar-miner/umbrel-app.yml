@@ -4,7 +4,7 @@ name: Solar Miner
 tagline: Control your Bitcoin miner with solar power
 icon: https://raw.githubusercontent.com/ArcherBullseye/solar-miner-store/main/archerbullseye-store-solar-miner/static/icon.svg
 category: bitcoin
-version: "1.3.4"
+version: "1.3.5"
 port: 3000
 description: >-
   Monitor your Solis solar inverter and automatically control your LuxOS
@@ -21,9 +21,9 @@ repo: https://github.com/ArcherBullseye/solar-miner-store
 support: https://github.com/ArcherBullseye/solar-miner-store/issues
 gallery: []
 releaseNotes: >-
-  v1.3.4: Dehumidifier compressor protection — configurable minimum run
-  time (default 30 min) and minimum off time (default 15 min) prevent
-  short-cycling when clouds pass. Manual ON/OFF button now suspends auto
-  mode for a configurable duration (default 2 hrs) then auto resumes.
+  v1.3.5: Dehumidifier card now shows a 3-pip export indicator below the
+  ON/OFF buttons. Red = importing or under 100W export, yellow = 100-500W,
+  green = over 500W. Also adds compressor protection (min run/off times)
+  and manual override timeout from v1.3.4.
 submitter: ArcherBullseye
 submission: https://github.com/ArcherBullseye/solar-miner-store
