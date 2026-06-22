@@ -617,7 +617,11 @@
         <button class="btn-amber" id="dehum-on-btn" onclick="dehum(true)" style="flex:1;padding:.35em 0;font-size:.8em;">ON</button>
         <button class="btn-secondary" id="dehum-off-btn" onclick="dehum(false)" style="flex:1;padding:.35em 0;font-size:.8em;">OFF</button>
       </div>
-      <div class="card-sub" id="dehum-excess" style="margin-top:6px;font-size:11px;">—</div>
+      <div style="display:flex;gap:4px;margin-top:8px;">
+        <div id="dehum-pip-0" style="flex:1;height:5px;border-radius:99px;background:var(--muted);opacity:.3;"></div>
+        <div id="dehum-pip-1" style="flex:1;height:5px;border-radius:99px;background:var(--muted);opacity:.3;"></div>
+        <div id="dehum-pip-2" style="flex:1;height:5px;border-radius:99px;background:var(--muted);opacity:.3;"></div>
+      </div>
     </div>
 
   </div>
@@ -1401,9 +1405,13 @@
         dehumAutoB.style.display = 'none';
       }
       const gridW = s.readings ? (s.readings.grid_power_w || 0) : 0;
-      el('dehum-excess').textContent = gridW > 0
-        ? `Exporting ${(gridW/1000).toFixed(2)} kW`
-        : gridW < 0 ? `Importing ${(Math.abs(gridW)/1000).toFixed(2)} kW` : 'Grid: balanced';
+      const pipColors = ['#ef4444', '#f59e0b', '#22c55e'];
+      const pipActive = gridW > 500 ? 2 : gridW > 100 ? 1 : 0;
+      for (let i = 0; i < 3; i++) {
+        const pip = el('dehum-pip-' + i);
+        pip.style.background = i === pipActive ? pipColors[i] : 'var(--muted)';
+        pip.style.opacity    = i === pipActive ? '1' : '.3';
+      }
 
       // Weather
       if (wx) {
