@@ -1001,6 +1001,28 @@
             <input type="checkbox" id="s-tg_sunny_day_ahead" />
             <label for="s-tg_sunny_day_ahead">☀️ Sunny day ahead — Smart Start will activate</label>
           </div>
+          <div class="checkbox-group">
+            <input type="checkbox" id="s-tg_weekly_recap" />
+            <label for="s-tg_weekly_recap">📅 Weekly sats recap</label>
+          </div>
+          <div class="form-group" style="margin-left:24px;margin-top:-6px;display:flex;gap:12px;flex-wrap:wrap;">
+            <div>
+              <label>Day</label>
+              <select id="s-tg_weekly_recap_day" style="margin-top:4px;">
+                <option value="0">Monday</option>
+                <option value="1">Tuesday</option>
+                <option value="2">Wednesday</option>
+                <option value="3">Thursday</option>
+                <option value="4">Friday</option>
+                <option value="5">Saturday</option>
+                <option value="6">Sunday</option>
+              </select>
+            </div>
+            <div>
+              <label>Hour (0–23)</label>
+              <input type="number" id="s-tg_weekly_recap_hour" step="1" min="0" max="23" style="max-width:80px;margin-top:4px;" />
+            </div>
+          </div>
         </div>
 
       </div><!-- /settings-content -->
@@ -1528,6 +1550,7 @@
         'dehum_min_run_minutes', 'dehum_min_off_minutes', 'dehum_manual_override_hours',
         'api_fail_cycles',
         'tg_soc_low_pct','tg_hashrate_drop_pct','tg_daily_hour','tg_sats_milestone_amount',
+        'tg_weekly_recap_hour',
       ];
 
       for (const k of textKeys) {
@@ -1545,11 +1568,14 @@
       const strKeys  = ['dehum_device_id','dehum_ip','lux_pool_username','lux_pool_api_url'];
       for (const k of strKeys) { const i = el('s-'+k); if (i && s[k] != null) i.value = s[k]; }
 
+      const daySel = el('s-tg_weekly_recap_day');
+      if (daySel && s['tg_weekly_recap_day'] != null) daySel.value = s['tg_weekly_recap_day'];
+
       const boolKeys = [
         'smart_start_enabled', 'eod_soc_target_enabled', 'dehum_auto_enabled',
         'tg_miner_onoff','tg_smart_start','tg_api_failure',
         'tg_soc_low','tg_soc_full','tg_hashrate_drop',
-        'tg_daily_summary','tg_sats_milestone','tg_sunny_day_ahead',
+        'tg_daily_summary','tg_sats_milestone','tg_sunny_day_ahead','tg_weekly_recap',
       ];
       for (const k of boolKeys) {
         const inp = el('s-' + k);
@@ -1625,6 +1651,9 @@
       tg_sats_milestone:       el('s-tg_sats_milestone').checked,
       tg_sats_milestone_amount:Number(el('s-tg_sats_milestone_amount').value),
       tg_sunny_day_ahead:      el('s-tg_sunny_day_ahead').checked,
+      tg_weekly_recap:         el('s-tg_weekly_recap').checked,
+      tg_weekly_recap_day:     Number(el('s-tg_weekly_recap_day').value),
+      tg_weekly_recap_hour:    Number(el('s-tg_weekly_recap_hour').value),
     };
 
     try {

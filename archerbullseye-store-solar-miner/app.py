@@ -72,6 +72,7 @@ notify_state = {
     "soc_full_notified": False,
     "prev_hashrate_mhs": None,
     "last_daily_date": None,
+    "last_weekly_recap_date": None,
     "sats_milestone_last": 0,
     "prev_sunny_day_notified": False,
 }
@@ -289,6 +290,28 @@ def _send_notifications(settings: dict, soc: Optional[float], actually_mining: b
                     f"📉 Min SOC: {min_soc:.1f}%\n"
                     f"💰 Sats today: {sats_str}"
                 )
+
+    # ── Weekly recap ─────────────────────────────────────────────
+    if settings.get("tg_weekly_recap"):
+        recap_day  = int(settings.get("tg_weekly_recap_day") or 0)   # 0=Mon … 6=Sun
+        recap_hour = int(settings.get("tg_weekly_recap_hour") or 8)
+        now_dt = datetime.now()
+        if now_dt.weekday() == recap_day and now_dt.hour == recap_hour:
+            today = date.today().isoformat()
+            if notify_state["last_weekly_recap_date"] != today:
+                notify_state["last_weekly_recap_date"] = today
+                rows = get_daily_sats(7)
+                if rows:
+                    total = sum(r["sats"] for r in rows)
+                    lines = "\n".join(
+                        f"  {r['date']}: {r['sats']:,}" for r in rows
+                    )
+                    bot.send(
+                        f"📅 <b>Weekly Sats Recap</b>\n"
+                        f"{lines}\n"
+                        f"─────────────────\n"
+                        f"<b>Total: {total:,} sats</b>"
+                    )
 
     # ── Sunny day ahead (checked on weather update) ───────────────
     if settings.get("tg_sunny_day_ahead"):
@@ -933,13 +956,13 @@ def api_post_settings():
         "dehum_min_run_minutes", "dehum_min_off_minutes", "dehum_manual_override_hours",
         "api_fail_cycles",
         "tg_soc_low_pct", "tg_hashrate_drop_pct", "tg_daily_hour",
-        "tg_sats_milestone_amount",
+        "tg_sats_milestone_amount", "tg_weekly_recap_day", "tg_weekly_recap_hour",
     ]
     for k in numeric_keys:
         if k in data:
             try:
                 if k in ("poll_interval_seconds", "api_fail_cycles", "tg_daily_hour",
-                         "tg_sats_milestone_amount"):
+                         "tg_sats_milestone_amount", "tg_weekly_recap_day", "tg_weekly_recap_hour"):
                     data[k] = int(data[k])
                 else:
                     data[k] = float(data[k])
@@ -950,7 +973,7 @@ def api_post_settings():
         "smart_start_enabled", "eod_soc_target_enabled", "dehum_auto_enabled",
         "tg_miner_onoff", "tg_smart_start", "tg_api_failure",
         "tg_soc_low", "tg_soc_full", "tg_hashrate_drop",
-        "tg_daily_summary", "tg_sats_milestone", "tg_sunny_day_ahead",
+        "tg_daily_summary", "tg_sats_milestone", "tg_sunny_day_ahead", "tg_weekly_recap",
     ]
     for k in bool_keys:
         if k in data:

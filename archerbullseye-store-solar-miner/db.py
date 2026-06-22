@@ -49,6 +49,9 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "tg_sats_milestone": True,
     "tg_sats_milestone_amount": 1000,
     "tg_sunny_day_ahead": True,
+    "tg_weekly_recap": False,
+    "tg_weekly_recap_day": 0,
+    "tg_weekly_recap_hour": 8,
     # End-of-day battery target
     "eod_soc_target_enabled": False,
     "eod_soc_target": 80.0,
