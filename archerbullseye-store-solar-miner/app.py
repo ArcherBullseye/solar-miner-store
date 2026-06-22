@@ -2,7 +2,7 @@ import os
 import time
 import threading
 import warnings
-from datetime import datetime, date, timezone
+from datetime import datetime, date, timezone, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -267,8 +267,11 @@ def _send_notifications(settings: dict, soc: Optional[float], actually_mining: b
     # ── Daily summary ────────────────────────────────────────────
     if settings.get("tg_daily_summary"):
         target_hour = int(settings.get("tg_daily_hour") or 7)
-        today = date.today().isoformat()
-        if datetime.now().hour == target_hour and notify_state["last_daily_date"] != today:
+        with state_lock:
+            tz_offset = int((state.get("weather") or {}).get("utc_offset_seconds") or 0)
+        local_now = datetime.now(timezone.utc) + timedelta(seconds=tz_offset)
+        today = local_now.strftime("%Y-%m-%d")
+        if local_now.hour == target_hour and notify_state["last_daily_date"] != today:
             notify_state["last_daily_date"] = today
             rows = get_recent_readings(hours=24)
             if rows:
@@ -295,9 +298,11 @@ def _send_notifications(settings: dict, soc: Optional[float], actually_mining: b
     if settings.get("tg_weekly_recap"):
         recap_day  = int(settings.get("tg_weekly_recap_day") or 0)   # 0=Mon … 6=Sun
         recap_hour = int(settings.get("tg_weekly_recap_hour") or 8)
-        now_dt = datetime.now()
-        if now_dt.weekday() == recap_day and now_dt.hour == recap_hour:
-            today = date.today().isoformat()
+        with state_lock:
+            tz_offset = int((state.get("weather") or {}).get("utc_offset_seconds") or 0)
+        local_now = datetime.now(timezone.utc) + timedelta(seconds=tz_offset)
+        today = local_now.strftime("%Y-%m-%d")
+        if local_now.weekday() == recap_day and local_now.hour == recap_hour:
             if notify_state["last_weekly_recap_date"] != today:
                 notify_state["last_weekly_recap_date"] = today
                 rows = get_daily_sats(7)
@@ -1091,6 +1096,11 @@ def api_pool_status():
 
 if __name__ == "__main__":
     init_db()
+
+    # Prevent duplicate notifications on restart — seed with today so they
+    # don't re-fire if the container restarts within the same trigger hour.
+    notify_state["last_daily_date"] = date.today().isoformat()
+    notify_state["last_weekly_recap_date"] = date.today().isoformat()
 
     settings_now = get_settings()
     seed_map = {

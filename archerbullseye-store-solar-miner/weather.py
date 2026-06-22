@@ -126,6 +126,7 @@ def parse_weather(data: Dict[str, Any], radiation_threshold: float = 300.0) -> D
         "current_radiation_w": current_radiation,
         "remaining_sunny_hours": remaining_sunny_hours,
         "hourly": hourly_forecast,
+        "utc_offset_seconds": int(data.get("utc_offset_seconds") or 0),
     }
 
 

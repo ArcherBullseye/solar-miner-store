@@ -4,7 +4,7 @@ name: Solar Miner
 tagline: Control your Bitcoin miner with solar power
 icon: https://raw.githubusercontent.com/ArcherBullseye/solar-miner-store/main/archerbullseye-store-solar-miner/static/icon.svg
 category: bitcoin
-version: "1.4.1"
+version: "1.4.2"
 port: 3000
 description: >-
   Monitor your Solis solar inverter and automatically control your LuxOS
@@ -21,9 +21,9 @@ repo: https://github.com/ArcherBullseye/solar-miner-store
 support: https://github.com/ArcherBullseye/solar-miner-store/issues
 gallery: []
 releaseNotes: >-
-  v1.4.1: Learned efficiency bar chart in Settings → Solar System. Shows
-  per-hour actual vs theoretical output as a percentage. Green bars are
-  trusted data (3+ samples), yellow are still learning. Dashed line marks
-  100% theoretical max.
+  v1.4.2: Fix duplicate Telegram notifications on container restart. Daily
+  summary and weekly recap now use your location's local time (derived from
+  Open-Meteo timezone data) instead of server UTC, so the hour you set is
+  the hour you get.
 submitter: ArcherBullseye
 submission: https://github.com/ArcherBullseye/solar-miner-store
