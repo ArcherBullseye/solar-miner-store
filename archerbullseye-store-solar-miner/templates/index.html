@@ -747,12 +747,29 @@
             <div class="form-hint">Clear per-hour efficiency data so it relearns from scratch. Do this after correcting PV Peak Power.</div>
           </div>
           <div class="form-group">
-            <div style="position:relative;height:180px;margin-top:4px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+              <label style="margin:0;">Efficiency by Month</label>
+              <select id="eff-month-select" style="font-size:12px;padding:2px 6px;">
+                <option value="1">January</option>
+                <option value="2">February</option>
+                <option value="3">March</option>
+                <option value="4">April</option>
+                <option value="5">May</option>
+                <option value="6">June</option>
+                <option value="7">July</option>
+                <option value="8">August</option>
+                <option value="9">September</option>
+                <option value="10">October</option>
+                <option value="11">November</option>
+                <option value="12">December</option>
+              </select>
+            </div>
+            <div style="position:relative;height:180px;">
               <canvas id="eff-chart"></canvas>
             </div>
-            <div id="eff-chart-empty" style="display:none;color:var(--muted);font-size:11px;margin-top:6px;">No efficiency data yet — will populate after a few sunny days.</div>
+            <div id="eff-chart-empty" style="display:none;color:var(--muted);font-size:11px;margin-top:6px;">No efficiency data yet for this month — will populate after a few sunny days.</div>
             <div class="form-hint" style="margin-top:6px;">
-              Each bar = avg actual output ÷ theoretical max for that hour. Green = trusted (≥3 samples), yellow = early data. Dashed line = 100% theoretical.
+              Each bar = avg actual output ÷ theoretical max for that hour. Green = this month's data (≥3 samples), yellow = borrowed from nearest month.
             </div>
           </div>
         </div>
@@ -1712,84 +1729,132 @@
     }
   }
 
+  let _effAllRows = null;
+  let _effCurrentMonth = 1;
+
+  function _effDataForMonth(month) {
+    const byHour = {};
+    for (const r of (_effAllRows || [])) {
+      if (!byHour[r.hour]) byHour[r.hour] = {};
+      byHour[r.hour][r.month] = { ratio: r.ratio, samples: r.samples };
+    }
+    const result = [];
+    for (let h = 0; h < 24; h++) {
+      const monthMap = byHour[h] || {};
+      let found = null, fromMonth = null;
+      for (let offset = 0; offset < 7; offset++) {
+        const candidates = offset === 0 ? [month] : [
+          ((month - 1 + offset) % 12) + 1,
+          ((month - 1 - offset + 12) % 12) + 1,
+        ];
+        for (const m of candidates) {
+          if (monthMap[m] && monthMap[m].samples >= 3) { found = monthMap[m]; fromMonth = m; break; }
+        }
+        if (found) break;
+      }
+      // Include own-month early data even if <3 samples
+      if (!found && monthMap[month]) { found = monthMap[month]; fromMonth = month; }
+      if (found) result.push({ hour: h, ratio: found.ratio, samples: found.samples, fromMonth });
+    }
+    return result;
+  }
+
+  function _renderEffChart(month) {
+    const emptyEl = el('eff-chart-empty');
+    const canvasEl = el('eff-chart');
+    const rows = _effDataForMonth(month);
+
+    if (!rows.length) {
+      canvasEl.style.display = 'none';
+      emptyEl.style.display = '';
+      return;
+    }
+    canvasEl.style.display = '';
+    emptyEl.style.display = 'none';
+
+    const MONTH_NAMES = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const labels  = rows.map(r => r.hour + ':00');
+    const ratios  = rows.map(r => +(r.ratio * 100).toFixed(1));
+    const colors  = rows.map(r => {
+      if (r.fromMonth !== month) return 'rgba(251,146,60,0.65)';  // orange = borrowed
+      return r.samples >= 3 ? 'rgba(34,197,94,0.75)' : 'rgba(234,179,8,0.6)'; // green / yellow
+    });
+    const borders = rows.map(r => {
+      if (r.fromMonth !== month) return 'rgba(251,146,60,1)';
+      return r.samples >= 3 ? 'rgba(34,197,94,1)' : 'rgba(234,179,8,1)';
+    });
+
+    if (effChart) { effChart.destroy(); effChart = null; }
+    effChart = new Chart(canvasEl.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Efficiency %',
+            data: ratios,
+            backgroundColor: colors,
+            borderColor: borders,
+            borderWidth: 1,
+            borderRadius: 3,
+            order: 2,
+          },
+          {
+            label: '100% theoretical',
+            data: labels.map(() => 100),
+            type: 'line',
+            borderColor: 'rgba(255,255,255,0.25)',
+            borderWidth: 1,
+            borderDash: [4, 4],
+            pointRadius: 0,
+            fill: false,
+            order: 1,
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            filter: (item) => item.datasetIndex === 0,
+            callbacks: {
+              label: (ctx) => {
+                const r = rows[ctx.dataIndex];
+                const borrowed = r.fromMonth !== month ? ` (from ${MONTH_NAMES[r.fromMonth]})` : '';
+                return [
+                  `${ctx.parsed.y.toFixed(1)}% of theoretical`,
+                  `${r.samples} sample${r.samples !== 1 ? 's' : ''}${borrowed}${r.samples < 3 && !borrowed ? ' (still learning)' : ''}`,
+                ];
+              }
+            }
+          }
+        },
+        scales: {
+          x: { ticks: { color: '#888', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+          y: {
+            min: 0,
+            ticks: { color: '#888', font: { size: 10 }, callback: v => v + '%' },
+            grid: { color: 'rgba(255,255,255,0.05)' }
+          }
+        }
+      }
+    });
+  }
+
   async function loadEffChart() {
     try {
       const resp = await fetch('/api/pv_efficiency');
       if (!resp.ok) return;
       const data = await resp.json();
-      const rows = data.rows || [];
-      const pvKw = data.pv_peak_kw || 0;
-
-      const emptyEl = el('eff-chart-empty');
-      const canvasEl = el('eff-chart');
-
-      if (!rows.length) {
-        canvasEl.style.display = 'none';
-        emptyEl.style.display = '';
-        return;
-      }
-      canvasEl.style.display = '';
-      emptyEl.style.display = 'none';
-
-      const labels  = rows.map(r => r.hour + ':00');
-      const ratios  = rows.map(r => +(r.ratio * 100).toFixed(1));
-      const trusted = rows.map(r => r.samples >= 3);
-      const colors  = trusted.map(t => t ? 'rgba(34,197,94,0.75)' : 'rgba(234,179,8,0.6)');
-      const borders = trusted.map(t => t ? 'rgba(34,197,94,1)' : 'rgba(234,179,8,1)');
-
-      if (effChart) { effChart.destroy(); effChart = null; }
-      effChart = new Chart(canvasEl.getContext('2d'), {
-        type: 'bar',
-        data: {
-          labels,
-          datasets: [
-            {
-              label: 'Efficiency %',
-              data: ratios,
-              backgroundColor: colors,
-              borderColor: borders,
-              borderWidth: 1,
-              borderRadius: 3,
-              order: 2,
-            },
-            {
-              label: '100% theoretical',
-              data: labels.map(() => 100),
-              type: 'line',
-              borderColor: 'rgba(255,255,255,0.25)',
-              borderWidth: 1,
-              borderDash: [4, 4],
-              pointRadius: 0,
-              fill: false,
-              order: 1,
-            }
-          ]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              filter: (item) => item.datasetIndex === 0,
-              callbacks: {
-                label: (ctx) => {
-                  const r = rows[ctx.dataIndex];
-                  return [`${ctx.parsed.y.toFixed(1)}% of theoretical`, `${r.samples} sample${r.samples !== 1 ? 's' : ''}${r.samples < 3 ? ' (still learning)' : ''}`];
-                }
-              }
-            }
-          },
-          scales: {
-            x: { ticks: { color: '#888', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
-            y: {
-              min: 0,
-              ticks: { color: '#888', font: { size: 10 }, callback: v => v + '%' },
-              grid: { color: 'rgba(255,255,255,0.05)' }
-            }
-          }
-        }
-      });
+      _effAllRows = data.rows || [];
+      _effCurrentMonth = data.current_month || 1;
+      // Set selector to current month if not already changed
+      const sel = el('eff-month-select');
+      if (sel && !sel._userChanged) sel.value = String(_effCurrentMonth);
+      const selMonth = sel ? parseInt(sel.value) : _effCurrentMonth;
+      _renderEffChart(selMonth);
     } catch(e) { console.warn('loadEffChart error:', e); }
   }
 
@@ -1805,6 +1870,12 @@
   // Close modal on overlay click (not card click)
   el('settings-modal').addEventListener('click', function(e) {
     if (e.target === this) closeSettings();
+  });
+
+  // Month selector for efficiency chart
+  el('eff-month-select').addEventListener('change', function() {
+    this._userChanged = true;
+    _renderEffChart(parseInt(this.value));
   });
 
   // ── Miner controls ───────────────────────────────────────────

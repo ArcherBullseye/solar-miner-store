@@ -442,7 +442,10 @@ def control_loop() -> None:
                 hourly = current_weather.get("hourly") or []
                 if pv_peak_kw > 0 and miner_power_w > 0:
                     # Learned efficiency model: predict actual output per forecast hour
-                    efficiency_map = get_pv_efficiency()
+                    with state_lock:
+                        _wx_tz = int((state.get("weather") or {}).get("utc_offset_seconds") or 0)
+                    _local_month = (datetime.now(timezone.utc) + timedelta(seconds=_wx_tz)).month
+                    efficiency_map = get_pv_efficiency(_local_month)
                     profitable_hours = 0
                     for slot in hourly:
                         rad   = float(slot.get("radiation_w") or 0)
@@ -480,6 +483,7 @@ def control_loop() -> None:
             readings  = None
             error_str = None
             action    = "none"
+            cur_rad   = 0.0
             miner_running = None
 
             if api_key and api_secret and inverter_sn:
@@ -495,10 +499,13 @@ def control_loop() -> None:
                     if readings and pv_peak_kw > 0:
                         with state_lock:
                             wx = state.get("weather")
-                        cur_rad = wx.get("current_radiation_w", 0) if wx else 0
+                        cur_rad = float(wx.get("current_radiation_w", 0) if wx else 0)
                         if cur_rad > 50:  # ignore near-zero radiation (night/overcast)
+                            tz_offset = int((wx or {}).get("utc_offset_seconds") or 0)
+                            local_now = datetime.now(timezone.utc) + timedelta(seconds=tz_offset)
                             update_pv_efficiency(
-                                hour_of_day=datetime.now().hour,
+                                month=local_now.month,
+                                hour_of_day=local_now.hour,
                                 actual_w=readings["input_power_w"],
                                 radiation_wm2=cur_rad,
                                 pv_peak_kw=pv_peak_kw,
@@ -757,6 +764,7 @@ def control_loop() -> None:
                     "action":          action,
                     "effective_soc_on": effective_soc_on,
                     "hashrate_mhs":    hashrate_mhs,
+                    "radiation_wm2":   cur_rad,
                 })
 
         except Exception as e:
@@ -943,7 +951,10 @@ def api_pv_efficiency():
     settings = get_settings()
     pv_peak_kw = float(settings.get("pv_peak_kw") or 0.0)
     rows = get_pv_efficiency_detail()
-    return jsonify({"rows": rows, "pv_peak_kw": pv_peak_kw})
+    with state_lock:
+        tz_offset = int((state.get("weather") or {}).get("utc_offset_seconds") or 0)
+    current_month = (datetime.now(timezone.utc) + timedelta(seconds=tz_offset)).month
+    return jsonify({"rows": rows, "pv_peak_kw": pv_peak_kw, "current_month": current_month})
 
 
 @app.route("/api/settings", methods=["GET"])

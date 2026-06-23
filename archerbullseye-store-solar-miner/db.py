@@ -87,9 +87,11 @@ def init_db() -> None:
         """)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS pv_efficiency (
-                hour_of_day   INTEGER PRIMARY KEY,
-                avg_ratio     REAL DEFAULT 0.0,
-                sample_count  INTEGER DEFAULT 0
+                month        INTEGER NOT NULL,
+                hour_of_day  INTEGER NOT NULL,
+                avg_ratio    REAL DEFAULT 0.0,
+                sample_count INTEGER DEFAULT 0,
+                PRIMARY KEY (month, hour_of_day)
             )
         """)
         cur.execute("""
@@ -105,7 +107,8 @@ def init_db() -> None:
                 miner_running   INTEGER,
                 action          TEXT,
                 effective_soc_on REAL,
-                hashrate_mhs    REAL DEFAULT 0.0
+                hashrate_mhs    REAL DEFAULT 0.0,
+                radiation_wm2   REAL DEFAULT 0.0
             )
         """)
         cur.execute("""
@@ -117,6 +120,11 @@ def init_db() -> None:
         # Migrate: hashrate_mhs column
         try:
             cur.execute("ALTER TABLE readings ADD COLUMN hashrate_mhs REAL DEFAULT 0.0")
+        except Exception:
+            pass
+        # Migrate: radiation_wm2 column
+        try:
+            cur.execute("ALTER TABLE readings ADD COLUMN radiation_wm2 REAL DEFAULT 0.0")
         except Exception:
             pass
         # Migrate: daily_sats v2 — switch from MAX to delta accumulation.
@@ -131,6 +139,21 @@ def init_db() -> None:
         ).fetchone():
             cur.execute("DELETE FROM daily_sats")
             cur.execute("INSERT INTO _db_migrations(name) VALUES('daily_sats_delta_v2')")
+        # Migrate pv_efficiency to per-month schema — old data can't be mapped to a month
+        if not cur.execute(
+            "SELECT 1 FROM _db_migrations WHERE name='pv_efficiency_monthly_v1'"
+        ).fetchone():
+            cur.execute("DROP TABLE IF EXISTS pv_efficiency")
+            cur.execute("""
+                CREATE TABLE pv_efficiency (
+                    month        INTEGER NOT NULL,
+                    hour_of_day  INTEGER NOT NULL,
+                    avg_ratio    REAL DEFAULT 0.0,
+                    sample_count INTEGER DEFAULT 0,
+                    PRIMARY KEY (month, hour_of_day)
+                )
+            """)
+            cur.execute("INSERT INTO _db_migrations(name) VALUES('pv_efficiency_monthly_v1')")
         for key, value in DEFAULT_SETTINGS.items():
             cur.execute(
                 "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
@@ -185,8 +208,8 @@ def save_reading(r: Dict[str, Any]) -> None:
             INSERT INTO readings
                 (ts, soc, battery_power_w, input_power_w, grid_power_w,
                  load_power_w, backup_power_w, miner_running, action, effective_soc_on,
-                 hashrate_mhs)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 hashrate_mhs, radiation_wm2)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 r.get("ts", datetime.utcnow().isoformat()),
@@ -200,6 +223,7 @@ def save_reading(r: Dict[str, Any]) -> None:
                 r.get("action", "none"),
                 r.get("effective_soc_on"),
                 r.get("hashrate_mhs", 0.0),
+                r.get("radiation_wm2", 0.0),
             ),
         )
         conn.commit()
@@ -207,58 +231,81 @@ def save_reading(r: Dict[str, Any]) -> None:
         conn.close()
 
 
-def update_pv_efficiency(hour_of_day: int, actual_w: float, radiation_wm2: float, pv_peak_kw: float) -> None:
-    """Update the rolling per-hour efficiency ratio (actual / theoretical max)."""
+def update_pv_efficiency(month: int, hour_of_day: int, actual_w: float, radiation_wm2: float, pv_peak_kw: float) -> None:
+    """Update the rolling per-month/hour efficiency ratio (actual / theoretical max)."""
     if pv_peak_kw <= 0 or radiation_wm2 <= 0:
         return
     theoretical = radiation_wm2 * pv_peak_kw * 1000.0
-    ratio = max(0.0, min(1.5, actual_w / theoretical))  # cap at 150% for bad data
+    ratio = max(0.0, min(1.5, actual_w / theoretical))
     conn = _connect()
     try:
         cur = conn.cursor()
-        cur.execute("SELECT avg_ratio, sample_count FROM pv_efficiency WHERE hour_of_day = ?", (hour_of_day,))
+        cur.execute(
+            "SELECT avg_ratio, sample_count FROM pv_efficiency WHERE month = ? AND hour_of_day = ?",
+            (month, hour_of_day),
+        )
         row = cur.fetchone()
         if row:
-            # Exponential moving average — weight recent data more (alpha=0.15)
             alpha = 0.15
             new_avg = alpha * ratio + (1 - alpha) * row["avg_ratio"]
             new_count = row["sample_count"] + 1
             cur.execute(
-                "UPDATE pv_efficiency SET avg_ratio = ?, sample_count = ? WHERE hour_of_day = ?",
-                (new_avg, new_count, hour_of_day),
+                "UPDATE pv_efficiency SET avg_ratio = ?, sample_count = ? WHERE month = ? AND hour_of_day = ?",
+                (new_avg, new_count, month, hour_of_day),
             )
         else:
             cur.execute(
-                "INSERT INTO pv_efficiency (hour_of_day, avg_ratio, sample_count) VALUES (?, ?, 1)",
-                (hour_of_day, ratio),
+                "INSERT INTO pv_efficiency (month, hour_of_day, avg_ratio, sample_count) VALUES (?, ?, ?, 1)",
+                (month, hour_of_day, ratio),
             )
         conn.commit()
     finally:
         conn.close()
 
 
-def get_pv_efficiency() -> Dict[int, float]:
-    """Returns {hour: avg_ratio} for hours with ≥3 samples (trusted data only)."""
+def get_pv_efficiency(month: int) -> Dict[int, float]:
+    """Returns {hour: avg_ratio} for the given month, falling back to adjacent months."""
     conn = _connect()
     try:
         cur = conn.cursor()
-        cur.execute("SELECT hour_of_day, avg_ratio, sample_count FROM pv_efficiency")
-        return {
-            row["hour_of_day"]: row["avg_ratio"]
-            for row in cur.fetchall()
-            if row["sample_count"] >= 3
-        }
+        cur.execute(
+            "SELECT month, hour_of_day, avg_ratio FROM pv_efficiency WHERE sample_count >= 3"
+        )
+        by_hour: Dict[int, Dict[int, float]] = {}
+        for row in cur.fetchall():
+            h, m, r = row["hour_of_day"], row["month"], row["avg_ratio"]
+            by_hour.setdefault(h, {})[m] = r
     finally:
         conn.close()
 
+    result: Dict[int, float] = {}
+    for hour, month_map in by_hour.items():
+        for offset in range(7):
+            candidates = [month] if offset == 0 else [
+                ((month - 1 + offset) % 12) + 1,
+                ((month - 1 - offset) % 12) + 1,
+            ]
+            for m in candidates:
+                if m in month_map:
+                    result[hour] = month_map[m]
+                    break
+            if hour in result:
+                break
+    return result
+
 
 def get_pv_efficiency_detail() -> list:
-    """Returns all efficiency rows with ratio and sample count, sorted by hour."""
+    """Returns all efficiency rows with month, hour, ratio and sample count."""
     conn = _connect()
     try:
         cur = conn.cursor()
-        cur.execute("SELECT hour_of_day, avg_ratio, sample_count FROM pv_efficiency ORDER BY hour_of_day")
-        return [{"hour": row["hour_of_day"], "ratio": row["avg_ratio"], "samples": row["sample_count"]} for row in cur.fetchall()]
+        cur.execute(
+            "SELECT month, hour_of_day, avg_ratio, sample_count FROM pv_efficiency ORDER BY month, hour_of_day"
+        )
+        return [
+            {"month": row["month"], "hour": row["hour_of_day"], "ratio": row["avg_ratio"], "samples": row["sample_count"]}
+            for row in cur.fetchall()
+        ]
     finally:
         conn.close()
 
@@ -345,7 +392,7 @@ def get_recent_readings(hours: int = 2) -> List[Dict[str, Any]]:
             """
             SELECT id, ts, soc, battery_power_w, input_power_w, grid_power_w,
                    load_power_w, backup_power_w, miner_running, action, effective_soc_on,
-                   hashrate_mhs
+                   hashrate_mhs, radiation_wm2
             FROM readings
             WHERE ts >= strftime('%Y-%m-%dT%H:%M:%S', 'now', ?)
             ORDER BY ts ASC
