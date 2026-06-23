@@ -901,7 +901,7 @@
           </div>
           <div class="form-group">
             <label>Local Key</label>
-            <input type="password" id="s-dehum_local_key" placeholder="16-character local key" />
+            <input type="password" id="s-dehum_local_key" placeholder="16-character local key" autocomplete="new-password" />
           </div>
           <div class="form-group">
             <label>Tuya Protocol Version</label>
@@ -1575,7 +1575,7 @@
       const s = await resp.json();
 
       const textKeys = ['solis_api_key','solis_inverter_sn','miner_ip','location_name','lux_pool_username','lux_pool_api_url','telegram_chat_id'];
-      const pwdKeys  = ['solis_api_secret','lux_pool_api_key','telegram_bot_token'];
+      const pwdKeys  = ['solis_api_secret','lux_pool_api_key','telegram_bot_token','dehum_local_key'];
       const numKeys  = [
         'poll_interval_seconds','soc_on_threshold','soc_off_threshold',
         'smart_soc_on_threshold','smart_soc_off_threshold',
