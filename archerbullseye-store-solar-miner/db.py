@@ -311,8 +311,9 @@ def add_daily_sats_delta(date_str: str, delta: int) -> None:
         conn.close()
 
 
-def get_today_sats() -> int:
-    today = datetime.now().strftime("%Y-%m-%d")
+def get_today_sats(today: str = None) -> int:
+    if today is None:
+        today = datetime.now().strftime("%Y-%m-%d")
     conn = _connect()
     try:
         row = conn.execute(

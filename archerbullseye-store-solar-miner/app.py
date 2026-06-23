@@ -838,8 +838,10 @@ def pool_loop() -> None:
                     if prev_sats is not None:
                         delta = sats - prev_sats
                         if delta > 0:
-                            today = datetime.now().strftime("%Y-%m-%d")
-                            add_daily_sats_delta(today, delta)
+                            with state_lock:
+                                tz_offset = int((state.get("weather") or {}).get("utc_offset_seconds") or 0)
+                            local_date = (datetime.now(timezone.utc) + timedelta(seconds=tz_offset)).strftime("%Y-%m-%d")
+                            add_daily_sats_delta(local_date, delta)
                     prev_sats = sats
         except Exception as e:
             print(f"Pool loop error: {e}")
@@ -862,7 +864,9 @@ def api_status():
     snapshot["pv_peak_kw"] = float(settings.get("pv_peak_kw") or 0.0)
     snapshot["eod_soc_target"]         = float(settings.get("eod_soc_target") or 80.0)
     snapshot["eod_soc_target_enabled"] = bool(settings.get("eod_soc_target_enabled", False))
-    snapshot["today_sats"]             = get_today_sats()
+    tz_offset = int((snapshot.get("weather") or {}).get("utc_offset_seconds") or 0)
+    local_date = (datetime.now(timezone.utc) + timedelta(seconds=tz_offset)).strftime("%Y-%m-%d")
+    snapshot["today_sats"]             = get_today_sats(local_date)
     return jsonify(snapshot)
 
 
