@@ -460,10 +460,14 @@ def control_loop() -> None:
                             # No learned data yet — count hours above radiation threshold
                             if rad > float(settings.get("radiation_threshold_wm2") or 300.0):
                                 profitable_hours += 1
+                    remaining_sunny = current_weather.get("remaining_sunny_hours", 0)
                     if profitable_hours >= sunny_hours_threshold:
                         smart_active = True
+                    elif remaining_sunny >= sunny_hours_threshold:
+                        # Efficiency model only covers 8 slots — fall back to full-day count
+                        smart_active = True
                 else:
-                    # PV peak or miner watts not configured — fall back to raw radiation count
+                    # PV peak or miner watts not configured — use raw radiation count
                     remaining_sunny = current_weather.get("remaining_sunny_hours", 0)
                     if remaining_sunny >= sunny_hours_threshold:
                         smart_active = True
