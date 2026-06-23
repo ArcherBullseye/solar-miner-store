@@ -367,6 +367,15 @@
       transition: border-color .15s;
     }
     .form-group input:focus { border-color: var(--amber); }
+    .pwd-wrap { position: relative; display: flex; align-items: center; }
+    .pwd-wrap input { flex: 1; }
+    .pwd-toggle {
+      position: absolute; right: 8px;
+      background: none; border: none; padding: 0;
+      cursor: pointer; color: var(--muted); line-height: 1;
+      font-size: 15px; opacity: .7;
+    }
+    .pwd-toggle:hover { opacity: 1; }
     .form-group input[readonly] { color: var(--muted); cursor: default; }
 
     .form-group-row {
@@ -704,7 +713,10 @@
           </div>
           <div class="form-group">
             <label>API Secret</label>
-            <input type="password" id="s-solis_api_secret" placeholder="Your Solis API secret" />
+            <div class="pwd-wrap">
+              <input type="password" id="s-solis_api_secret" placeholder="Your Solis API secret" autocomplete="new-password" />
+              <button type="button" class="pwd-toggle" onclick="togglePwd('s-solis_api_secret',this)" tabindex="-1">👁</button>
+            </div>
           </div>
           <div class="form-group">
             <label>Inverter Serial Number</label>
@@ -901,7 +913,10 @@
           </div>
           <div class="form-group">
             <label>Local Key</label>
-            <input type="password" id="s-dehum_local_key" placeholder="16-character local key" autocomplete="new-password" />
+            <div class="pwd-wrap">
+              <input type="password" id="s-dehum_local_key" placeholder="16-character local key" autocomplete="new-password" />
+              <button type="button" class="pwd-toggle" onclick="togglePwd('s-dehum_local_key',this)" tabindex="-1">👁</button>
+            </div>
           </div>
           <div class="form-group">
             <label>Tuya Protocol Version</label>
@@ -940,7 +955,10 @@
           <div class="panel-title">Lux Mining Pool</div>
           <div class="form-group">
             <label>API Key</label>
-            <input type="password" id="s-lux_pool_api_key" placeholder="Your Luxor API key" />
+            <div class="pwd-wrap">
+              <input type="password" id="s-lux_pool_api_key" placeholder="Your Luxor API key" autocomplete="new-password" />
+              <button type="button" class="pwd-toggle" onclick="togglePwd('s-lux_pool_api_key',this)" tabindex="-1">👁</button>
+            </div>
             <div class="form-hint">Generate in Luxor dashboard → Account → API Keys.</div>
           </div>
           <div class="form-group">
@@ -963,7 +981,10 @@
           <div class="panel-title">Telegram Bot</div>
           <div class="form-group">
             <label>Bot Token</label>
-            <input type="password" id="s-telegram_bot_token" placeholder="123456:ABC-DEF..." />
+            <div class="pwd-wrap">
+              <input type="password" id="s-telegram_bot_token" placeholder="123456:ABC-DEF..." autocomplete="new-password" />
+              <button type="button" class="pwd-toggle" onclick="togglePwd('s-telegram_bot_token',this)" tabindex="-1">👁</button>
+            </div>
             <div class="form-hint">Create a bot via @BotFather on Telegram and paste the token here.</div>
           </div>
           <div class="form-group">
@@ -1871,6 +1892,13 @@
   el('settings-modal').addEventListener('click', function(e) {
     if (e.target === this) closeSettings();
   });
+
+  function togglePwd(inputId, btn) {
+    const inp = el(inputId);
+    const show = inp.type === 'password';
+    inp.type = show ? 'text' : 'password';
+    btn.textContent = show ? '🙈' : '👁';
+  }
 
   // Month selector for efficiency chart
   el('eff-month-select').addEventListener('change', function() {
