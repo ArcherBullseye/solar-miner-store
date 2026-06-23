@@ -596,7 +596,9 @@ def control_loop() -> None:
                     if eod_enabled and eod_target > 0.0 and battery_kwh > 0.0 and pv_peak_kw > 0.0:
                         hourly_wx   = (current_weather or {}).get("hourly", [])
                         load_profile = get_hourly_load_profile()
-                        eff_map      = get_pv_efficiency()
+                        _eod_tz = int((current_weather or {}).get("utc_offset_seconds") or 0)
+                        _eod_month = (datetime.now(timezone.utc) + timedelta(seconds=_eod_tz)).month
+                        eff_map      = get_pv_efficiency(_eod_month)
                         eod_projected_with = _estimate_eod_soc(
                             soc=soc, battery_kwh=battery_kwh,
                             hourly_wx=hourly_wx, pv_peak_kw=pv_peak_kw,
@@ -871,12 +873,13 @@ def index():
 def api_status():
     with state_lock:
         snapshot = dict(state)
-    snapshot["pv_efficiency"] = get_pv_efficiency()
     settings = get_settings()
+    tz_offset = int((snapshot.get("weather") or {}).get("utc_offset_seconds") or 0)
+    _cur_month = (datetime.now(timezone.utc) + timedelta(seconds=tz_offset)).month
+    snapshot["pv_efficiency"] = get_pv_efficiency(_cur_month)
     snapshot["pv_peak_kw"] = float(settings.get("pv_peak_kw") or 0.0)
     snapshot["eod_soc_target"]         = float(settings.get("eod_soc_target") or 80.0)
     snapshot["eod_soc_target_enabled"] = bool(settings.get("eod_soc_target_enabled", False))
-    tz_offset = int((snapshot.get("weather") or {}).get("utc_offset_seconds") or 0)
     local_date = (datetime.now(timezone.utc) + timedelta(seconds=tz_offset)).strftime("%Y-%m-%d")
     snapshot["today_sats"]             = get_today_sats(local_date)
     return jsonify(snapshot)
